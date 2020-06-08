@@ -108,7 +108,7 @@ case class InsertAdaptiveSparkPlan(
   }
 
   private def sanityCheck(plan: SparkPlan): Boolean =
-    plan.logicalLink.isDefined
+    plan.logicalLink.isDefined && !plan.getClass.getName.startsWith("ai.rapids")
 
   /**
    * Returns an expression-id-to-execution-plan map for all the sub-queries.
