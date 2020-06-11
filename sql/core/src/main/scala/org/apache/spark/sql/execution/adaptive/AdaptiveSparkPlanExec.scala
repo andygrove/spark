@@ -41,6 +41,8 @@ import org.apache.spark.sql.execution.ui.{SparkListenerSQLAdaptiveExecutionUpdat
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.util.ThreadUtils
 
+// scalastyle:off println
+
 /**
  * A root node to execute the query plan adaptively. It splits the query plan into independent
  * stages and executes them in order according to their dependencies. The query stage
@@ -145,7 +147,7 @@ case class AdaptiveSparkPlanExec(
       .map(_.toLong).filter(SQLExecution.getQueryExecution(_) eq context.qe)
   }
 
-  private def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
+  def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
     if (isFinalPlan) return currentPhysicalPlan
 
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
@@ -229,6 +231,9 @@ case class AdaptiveSparkPlanExec(
       // Run the final plan when there's no more unfinished stages.
       currentPhysicalPlan = applyPhysicalRules(result.newPlan, queryStageOptimizerRules)
       isFinalPlan = true
+
+      println("final plan:\n" + currentPhysicalPlan.toString())
+
       executionId.foreach(onUpdatePlan(_, Seq(currentPhysicalPlan)))
       currentPhysicalPlan
     }
@@ -319,69 +324,95 @@ case class AdaptiveSparkPlanExec(
    * 2) Whether the child query stages (if any) of the current node have all been materialized.
    * 3) A list of the new query stages that have been created.
    */
-  private def createQueryStages(plan: SparkPlan): CreateStageResult = plan match {
-    case e: Exchange =>
-      // First have a quick check in the `stageCache` without having to traverse down the node.
-      context.stageCache.get(e.canonicalized) match {
-        case Some(existingStage) if conf.exchangeReuseEnabled =>
-          val stage = reuseQueryStage(existingStage, e)
-          // This is a leaf stage and is not materialized yet even if the reused exchange may has
-          // been completed. It will trigger re-optimization later and stage materialization will
-          // finish in instant if the underlying exchange is already completed.
-          CreateStageResult(
-            newPlan = stage, allChildStagesMaterialized = false, newStages = Seq(stage))
+  private def createQueryStages(plan: SparkPlan): CreateStageResult = {
+    println(s"createQueryStages:\n$plan")
+    plan match {
+      case e: Exchange =>
+        // First have a quick check in the `stageCache` without having to traverse down the node.
+        context.stageCache.get(e.canonicalized) match {
+          case Some(existingStage) if conf.exchangeReuseEnabled =>
+            val stage = reuseQueryStage(existingStage, e)
+            // This is a leaf stage and is not materialized yet even if the reused exchange may has
+            // been completed. It will trigger re-optimization later and stage materialization will
+            // finish in instant if the underlying exchange is already completed.
+            CreateStageResult(
+              newPlan = stage, allChildStagesMaterialized = false, newStages = Seq(stage))
 
-        case _ =>
-          val result = createQueryStages(e.child)
-          val newPlan = e.withNewChildren(Seq(result.newPlan)).asInstanceOf[Exchange]
-          // Create a query stage only when all the child query stages are ready.
-          if (result.allChildStagesMaterialized) {
-            var newStage = newQueryStage(newPlan)
-            if (conf.exchangeReuseEnabled) {
-              // Check the `stageCache` again for reuse. If a match is found, ditch the new stage
-              // and reuse the existing stage found in the `stageCache`, otherwise update the
-              // `stageCache` with the new stage.
-              val queryStage = context.stageCache.getOrElseUpdate(e.canonicalized, newStage)
-              if (queryStage.ne(newStage)) {
-                newStage = reuseQueryStage(queryStage, e)
+          case _ =>
+            println("createQueryStages: BEFORE createQueryStages")
+            val result = createQueryStages(e.child)
+            println(s"createQueryStages: AFTER createQueryStages:\n$result")
+            println("createQueryStages: BEFORE e.withNewChildren")
+            val newPlan = e.withNewChildren(Seq(result.newPlan)).asInstanceOf[Exchange]
+            println(s"createQueryStages: AFTER e.withNewChildren:\n$newPlan")
+            // Create a query stage only when all the child query stages are ready.
+            if (result.allChildStagesMaterialized) {
+              println(s"createQueryStages: result.allChildStagesMaterialized)=TRUE")
+              println(s"createQueryStages AFTER newQueryStage, plan:\n$newPlan")
+              var newStage = newQueryStage(newPlan)
+              println(s"createQueryStages AFTER newQueryStage, STAGE:\n$newStage")
+              if (conf.exchangeReuseEnabled) {
+                // Check the `stageCache` again for reuse. If a match is found, ditch the new stage
+                // and reuse the existing stage found in the `stageCache`, otherwise update the
+                // `stageCache` with the new stage.
+                val queryStage = context.stageCache.getOrElseUpdate(e.canonicalized, newStage)
+                if (queryStage.ne(newStage)) {
+                  newStage = reuseQueryStage(queryStage, e)
+                }
               }
+
+              // We've created a new stage, which is obviously not ready yet.
+              CreateStageResult(newPlan = newStage,
+                allChildStagesMaterialized = false, newStages = Seq(newStage))
+            } else {
+              println(s"createQueryStages: result.allChildStagesMaterialized)=FALSE")
+              CreateStageResult(newPlan = newPlan,
+                allChildStagesMaterialized = false, newStages = result.newStages)
             }
+        }
 
-            // We've created a new stage, which is obviously not ready yet.
-            CreateStageResult(newPlan = newStage,
-              allChildStagesMaterialized = false, newStages = Seq(newStage))
-          } else {
-            CreateStageResult(newPlan = newPlan,
-              allChildStagesMaterialized = false, newStages = result.newStages)
-          }
-      }
+      case q: QueryStageExec =>
+        CreateStageResult(newPlan = q,
+          allChildStagesMaterialized = q.resultOption.isDefined, newStages = Seq.empty)
 
-    case q: QueryStageExec =>
-      CreateStageResult(newPlan = q,
-        allChildStagesMaterialized = q.resultOption.isDefined, newStages = Seq.empty)
-
-    case _ =>
-      if (plan.children.isEmpty) {
-        CreateStageResult(newPlan = plan, allChildStagesMaterialized = true, newStages = Seq.empty)
-      } else {
-        val results = plan.children.map(createQueryStages)
-        CreateStageResult(
-          newPlan = plan.withNewChildren(results.map(_.newPlan)),
-          allChildStagesMaterialized = results.forall(_.allChildStagesMaterialized),
-          newStages = results.flatMap(_.newStages))
-      }
+      case _ =>
+        if (plan.children.isEmpty) {
+          CreateStageResult(newPlan = plan, allChildStagesMaterialized = true,
+            newStages = Seq.empty)
+        } else {
+          val results = plan.children.map(createQueryStages)
+          CreateStageResult(
+            newPlan = plan.withNewChildren(results.map(_.newPlan)),
+            allChildStagesMaterialized = results.forall(_.allChildStagesMaterialized),
+            newStages = results.flatMap(_.newStages))
+        }
+    }
   }
 
   private def newQueryStage(e: Exchange): QueryStageExec = {
-    val optimizedPlan = applyPhysicalRules(e.child, queryStageOptimizerRules)
-    val queryStage = e match {
-      case s: ShuffleExchangeExec =>
-        ShuffleQueryStageExec(currentStageId, s.copy(child = optimizedPlan))
-      case b: BroadcastExchangeExec =>
-        BroadcastQueryStageExec(currentStageId, b.copy(child = optimizedPlan))
+    println(s"newQueryStage (stageId=$currentStageId):\n$e")
+    val optimizedPlan = applyPhysicalRules(e, queryStageOptimizerRules)
+    val queryStage = optimizedPlan match {
+      case s: ShuffleExchangeExecLike =>
+        ShuffleQueryStageExec(currentStageId, s.replaceChild(optimizedPlan))
+      case b: BroadcastExchangeExecLike =>
+        BroadcastQueryStageExec(currentStageId, b.replaceChild(optimizedPlan))
+      case WholeStageCodegenExec(ColumnarToRowExec(InputAdapter(child))) =>
+        child match {
+          case s: ShuffleExchangeExecLike =>
+            ShuffleQueryStageExec(currentStageId, s.replaceChild(optimizedPlan))
+          case b: BroadcastExchangeExecLike =>
+            BroadcastQueryStageExec(currentStageId, b.replaceChild(optimizedPlan))
+          case other =>
+            println("No match")
+            println(other.getClass)
+            println(other.isInstanceOf[BroadcastExchangeExecLike])
+            throw new UnsupportedOperationException(other.getClass.getName)
+        }
     }
     currentStageId += 1
     setLogicalLinkForNewQueryStage(queryStage, e)
+    println(s"newQueryStage (stageId=$currentStageId) returning:\n$queryStage")
     queryStage
   }
 
@@ -578,7 +609,13 @@ object AdaptiveSparkPlanExec {
    * Apply a list of physical operator rules on a [[SparkPlan]].
    */
   def applyPhysicalRules(plan: SparkPlan, rules: Seq[Rule[SparkPlan]]): SparkPlan = {
-    rules.foldLeft(plan) { case (sp, rule) => rule.apply(sp) }
+    rules.foldLeft(plan) {
+      case (sp, rule) =>
+        println(s"BEFORE rule $rule:\n$sp")
+        val sp2 = rule.apply(sp)
+        println(s"AFTER rule $rule:\n$sp2")
+        sp2
+    }
   }
 }
 
@@ -614,3 +651,5 @@ case class StageSuccess(stage: QueryStageExec, result: Any) extends StageMateria
  * The materialization of a query stage hit an error and failed.
  */
 case class StageFailure(stage: QueryStageExec, error: Throwable) extends StageMaterializationEvent
+
+// scalastyle:on println

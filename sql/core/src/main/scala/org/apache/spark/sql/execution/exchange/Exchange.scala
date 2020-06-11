@@ -42,6 +42,7 @@ abstract class Exchange extends UnaryExecNode {
   override def output: Seq[Attribute] = child.output
 
   override def stringArgs: Iterator[Any] = super.stringArgs ++ Iterator(s"[id=#$id]")
+
 }
 
 /**

@@ -22,9 +22,11 @@ import java.util.concurrent._
 
 import scala.concurrent.{ExecutionContext, Promise}
 import scala.concurrent.duration.NANOSECONDS
+import scala.util.Try
 import scala.util.control.NonFatal
 
 import org.apache.spark.{broadcast, SparkException}
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.launcher.SparkLauncher
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -37,13 +39,19 @@ import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
 import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.util.{SparkFatalException, ThreadUtils}
 
+trait BroadcastExchangeExecLike {
+  def replaceChild(child: SparkPlan): SparkPlan
+  def completionFuture: scala.concurrent.Future[broadcast.Broadcast[Any]]
+  def asExchange(): Exchange
+}
+
 /**
  * A [[BroadcastExchangeExec]] collects, transforms and finally broadcasts the result of
  * a transformed SparkPlan.
  */
 case class BroadcastExchangeExec(
     mode: BroadcastMode,
-    child: SparkPlan) extends Exchange {
+    child: SparkPlan) extends Exchange with BroadcastExchangeExecLike {
   import BroadcastExchangeExec._
 
   private[sql] val runId: UUID = UUID.randomUUID
@@ -60,6 +68,12 @@ case class BroadcastExchangeExec(
     BroadcastExchangeExec(mode.canonicalized, child.canonicalized)
   }
 
+  override def asExchange(): Exchange = this
+
+  override def replaceChild(newChild: SparkPlan): SparkPlan = {
+    this.copy(child = newChild)
+  }
+
   @transient
   private lazy val promise = Promise[broadcast.Broadcast[Any]]()
 
@@ -68,7 +82,10 @@ case class BroadcastExchangeExec(
    * Note that calling this field will not start the execution of broadcast job.
    */
   @transient
-  lazy val completionFuture: scala.concurrent.Future[broadcast.Broadcast[Any]] = promise.future
+  lazy val _completionFuture: scala.concurrent.Future[broadcast.Broadcast[Any]] = promise.future
+
+
+  override def completionFuture: concurrent.Future[Broadcast[Any]] = _completionFuture
 
   @transient
   private val timeout: Long = SQLConf.get.broadcastTimeout
@@ -83,7 +100,17 @@ case class BroadcastExchangeExec(
               interruptOnCancel = true)
             val beforeCollect = System.nanoTime()
             // Use executeCollect/executeCollectIterator to avoid conversion to Scala types
-            val (numRows, input) = child.executeCollectIterator()
+            val x = Try(child.executeCollectIterator())
+            if (x.isFailure) {
+              // scalastyle:off println
+              println(s"** this=$this")
+              // println(s"** child=$child")
+              val e = x.failed.get
+              // e.printStackTrace()
+              // scalastyle:on println
+              throw e
+            }
+            val (numRows, input) = x.get
             if (numRows >= MAX_BROADCAST_TABLE_ROWS) {
               throw new SparkException(
                 s"Cannot broadcast the table over $MAX_BROADCAST_TABLE_ROWS rows: $numRows rows")

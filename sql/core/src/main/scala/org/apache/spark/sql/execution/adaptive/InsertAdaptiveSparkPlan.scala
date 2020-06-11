@@ -43,37 +43,39 @@ case class InsertAdaptiveSparkPlan(
 
   override def apply(plan: SparkPlan): SparkPlan = applyInternal(plan, false)
 
-  private def applyInternal(plan: SparkPlan, isSubquery: Boolean): SparkPlan = plan match {
-    case _ if !conf.adaptiveExecutionEnabled => plan
-    case _: ExecutedCommandExec => plan
-    case c: DataWritingCommandExec => c.copy(child = apply(c.child))
-    case c: V2CommandExec => c.withNewChildren(c.children.map(apply))
-    case _ if shouldApplyAQE(plan, isSubquery) =>
-      if (supportAdaptive(plan)) {
-        try {
-          // Plan sub-queries recursively and pass in the shared stage cache for exchange reuse.
-          // Fall back to non-AQE mode if AQE is not supported in any of the sub-queries.
-          val subqueryMap = buildSubqueryMap(plan)
-          val planSubqueriesRule = PlanAdaptiveSubqueries(subqueryMap)
-          val preprocessingRules = Seq(
-            planSubqueriesRule)
-          // Run pre-processing rules.
-          val newPlan = AdaptiveSparkPlanExec.applyPhysicalRules(plan, preprocessingRules)
-          logDebug(s"Adaptive execution enabled for plan: $plan")
-          AdaptiveSparkPlanExec(newPlan, adaptiveExecutionContext, preprocessingRules, isSubquery)
-        } catch {
-          case SubqueryAdaptiveNotSupportedException(subquery) =>
-            logWarning(s"${SQLConf.ADAPTIVE_EXECUTION_ENABLED.key} is enabled " +
-              s"but is not supported for sub-query: $subquery.")
-            plan
+  private def applyInternal(plan: SparkPlan, isSubquery: Boolean): SparkPlan = {
+    plan match {
+      case _ if !conf.adaptiveExecutionEnabled => plan
+      case _: ExecutedCommandExec => plan
+      case c: DataWritingCommandExec => c.copy(child = apply(c.child))
+      case c: V2CommandExec => c.withNewChildren(c.children.map(apply))
+      case _ if shouldApplyAQE(plan, isSubquery) =>
+        if (supportAdaptive(plan)) {
+          try {
+            // Plan sub-queries recursively and pass in the shared stage cache for exchange reuse.
+            // Fall back to non-AQE mode if AQE is not supported in any of the sub-queries.
+            val subqueryMap = buildSubqueryMap(plan)
+            val planSubqueriesRule = PlanAdaptiveSubqueries(subqueryMap)
+            val preprocessingRules = Seq(
+              planSubqueriesRule)
+            // Run pre-processing rules.
+            val newPlan = AdaptiveSparkPlanExec.applyPhysicalRules(plan, preprocessingRules)
+            logDebug(s"Adaptive execution enabled for plan: $plan")
+            AdaptiveSparkPlanExec(newPlan, adaptiveExecutionContext, preprocessingRules, isSubquery)
+          } catch {
+            case SubqueryAdaptiveNotSupportedException(subquery) =>
+              logWarning(s"${SQLConf.ADAPTIVE_EXECUTION_ENABLED.key} is enabled " +
+                  s"but is not supported for sub-query: $subquery.")
+              plan
+          }
+        } else {
+          logWarning(s"${SQLConf.ADAPTIVE_EXECUTION_ENABLED.key} is enabled " +
+              s"but is not supported for query: $plan.")
+          plan
         }
-      } else {
-        logWarning(s"${SQLConf.ADAPTIVE_EXECUTION_ENABLED.key} is enabled " +
-          s"but is not supported for query: $plan.")
-        plan
-      }
 
-    case _ => plan
+      case _ => plan
+    }
   }
 
   // AQE is only useful when the query has exchanges or sub-queries. This method returns true if
@@ -108,7 +110,9 @@ case class InsertAdaptiveSparkPlan(
   }
 
   private def sanityCheck(plan: SparkPlan): Boolean =
-    plan.logicalLink.isDefined && !plan.getClass.getName.startsWith("ai.rapids")
+    plan.logicalLink.isDefined
+
+  // && !plan.getClass.getName.startsWith("ai.rapids")
 
   /**
    * Returns an expression-id-to-execution-plan map for all the sub-queries.

@@ -112,6 +112,8 @@ abstract class QueryStageExec extends LeafExecNode {
 
   protected override def stringArgs: Iterator[Any] = Iterator.single(id)
 
+//  def replaceChild(newChild: SparkPlan): SparkPlan
+
   override def generateTreeString(
       depth: Int,
       lastChildren: Seq[Boolean],
@@ -186,8 +188,8 @@ case class BroadcastQueryStageExec(
     override val plan: SparkPlan) extends QueryStageExec {
 
   @transient val broadcast = plan match {
-    case b: BroadcastExchangeExec => b
-    case ReusedExchangeExec(_, b: BroadcastExchangeExec) => b
+    case b: BroadcastExchangeExecLike => b
+    case ReusedExchangeExec(_, b: BroadcastExchangeExecLike) => b
     case _ =>
       throw new IllegalStateException("wrong plan for broadcast stage:\n " + plan.treeString)
   }
@@ -215,14 +217,15 @@ case class BroadcastQueryStageExec(
   override def newReuseInstance(newStageId: Int, newOutput: Seq[Attribute]): QueryStageExec = {
     BroadcastQueryStageExec(
       newStageId,
-      ReusedExchangeExec(newOutput, broadcast))
+      ReusedExchangeExec(newOutput, broadcast.asExchange()))
   }
 
   override def cancel(): Unit = {
-    if (!broadcast.relationFuture.isDone) {
-      sparkContext.cancelJobGroup(broadcast.runId.toString)
-      broadcast.relationFuture.cancel(true)
-    }
+    // TODO call broadcast.cancel()
+//    if (!broadcast.relationFuture.isDone) {
+//      sparkContext.cancelJobGroup(broadcast.runId.toString)
+//      broadcast.relationFuture.cancel(true)
+//    }
   }
 }
 
