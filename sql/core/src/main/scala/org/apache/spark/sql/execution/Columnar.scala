@@ -58,7 +58,14 @@ class ColumnarRule {
  * [[MapPartitionsInRWithArrowExec]]. Eventually this should replace those implementations.
  */
 case class ColumnarToRowExec(child: SparkPlan) extends UnaryExecNode with CodegenSupport {
-  assert(child.supportsColumnar)
+
+  try {
+    assert(child.supportsColumnar, s"child is not columnar: ${child.getClass} $child")
+  } catch {
+    case e: Throwable =>
+      e.printStackTrace()
+      throw e
+  }
 
   override def output: Seq[Attribute] = child.output
 
@@ -486,11 +493,14 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
    * Inserts an transition to columnar formatted data.
    */
   private def insertRowToColumnar(plan: SparkPlan): SparkPlan = {
+    println(s"insertRowToColumnar:\n$plan")
     if (!plan.supportsColumnar) {
+      println(s"insertRowToColumnar plan is not columnar, inserting RowToColumnar")
       // The tree feels kind of backwards
       // Columnar Processing will start here, so transition from row to columnar
       RowToColumnarExec(insertTransitions(plan))
     } else {
+      println(s"insertRowToColumnar plan is columnar, recursing into children")
       plan.withNewChildren(plan.children.map(insertRowToColumnar))
     }
   }
@@ -499,22 +509,33 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
    * Inserts RowToColumnarExecs and ColumnarToRowExecs where needed.
    */
   private def insertTransitions(plan: SparkPlan): SparkPlan = {
+    println(s"insertTransitions:\n$plan")
     if (plan.supportsColumnar) {
+      println(s"insertTransitions plan is columnar, inserting ColumnarToRow")
       // The tree feels kind of backwards
       // This is the end of the columnar processing so go back to rows
       ColumnarToRowExec(insertRowToColumnar(plan))
     } else {
+      println(s"insertTransitions plan is not columnar, recursing into children")
       plan.withNewChildren(plan.children.map(insertTransitions))
     }
   }
 
   def apply(plan: SparkPlan): SparkPlan = {
     var preInsertPlan: SparkPlan = plan
-    columnarRules.foreach((r : ColumnarRule) =>
-      preInsertPlan = r.preColumnarTransitions(preInsertPlan))
+    columnarRules.foreach((r: ColumnarRule) => {
+      println(s"BEFORE columnarRule $r on preInsertPlan:\n$preInsertPlan")
+      preInsertPlan = r.preColumnarTransitions(preInsertPlan)
+      println(s"AFTER columnarRule $r on preInsertPlan:\n$preInsertPlan")
+    })
+    println(s"BEFORE insertTransitions:\n$preInsertPlan")
     var postInsertPlan = insertTransitions(preInsertPlan)
-    columnarRules.reverse.foreach((r : ColumnarRule) =>
-      postInsertPlan = r.postColumnarTransitions(postInsertPlan))
+    println(s"AFTER insertTransitions:\n$postInsertPlan")
+    columnarRules.reverse.foreach((r : ColumnarRule) => {
+      println(s"BEFORE columnarRule $r on postInsertPlan:\n$postInsertPlan")
+      postInsertPlan = r.postColumnarTransitions(postInsertPlan)
+      println(s"AFTER columnarRule $r on postInsertPlan:\n$postInsertPlan")
+    })
     postInsertPlan
   }
 }

@@ -94,6 +94,12 @@ case class AdaptiveSparkPlanExec(
     ensureRequirements
   )
 
+  private def postStageCreationRules: Seq[Rule[SparkPlan]] = Seq(
+    ensureRequirements,
+    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
+  )
+
+
   // A list of physical optimizer rules to be applied to a new stage before its execution. These
   // optimizations should be stage-independent.
   @transient private val queryStageOptimizerRules: Seq[Rule[SparkPlan]] = Seq(
@@ -394,15 +400,15 @@ case class AdaptiveSparkPlanExec(
     val optimizedPlan = applyPhysicalRules(e, queryStageOptimizerRules)
     val queryStage = optimizedPlan match {
       case s: ShuffleExchangeExecLike =>
-        ShuffleQueryStageExec(currentStageId, s.replaceChild(optimizedPlan))
+        ShuffleQueryStageExec(currentStageId, optimizedPlan)
       case b: BroadcastExchangeExecLike =>
-        BroadcastQueryStageExec(currentStageId, b.replaceChild(optimizedPlan))
+        BroadcastQueryStageExec(currentStageId, optimizedPlan)
       case WholeStageCodegenExec(ColumnarToRowExec(InputAdapter(child))) =>
         child match {
           case s: ShuffleExchangeExecLike =>
-            ShuffleQueryStageExec(currentStageId, s.replaceChild(optimizedPlan))
+            ShuffleQueryStageExec(currentStageId, optimizedPlan)
           case b: BroadcastExchangeExecLike =>
-            BroadcastQueryStageExec(currentStageId, b.replaceChild(optimizedPlan))
+            BroadcastQueryStageExec(currentStageId, optimizedPlan)
           case other =>
             println("No match")
             println(other.getClass)
@@ -513,7 +519,7 @@ case class AdaptiveSparkPlanExec(
     logicalPlan.invalidateStatsCache()
     val optimized = optimizer.execute(logicalPlan)
     val sparkPlan = context.session.sessionState.planner.plan(ReturnAnswer(optimized)).next()
-    val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ queryStagePreparationRules)
+    val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ postStageCreationRules)
     (newPlan, optimized)
   }
 
