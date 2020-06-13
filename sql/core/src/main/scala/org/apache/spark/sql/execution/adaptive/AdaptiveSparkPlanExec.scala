@@ -403,12 +403,12 @@ case class AdaptiveSparkPlanExec(
         ShuffleQueryStageExec(currentStageId, optimizedPlan)
       case b: BroadcastExchangeExecLike =>
         BroadcastQueryStageExec(currentStageId, optimizedPlan)
-      case WholeStageCodegenExec(ColumnarToRowExec(InputAdapter(child))) =>
-        child match {
-          case s: ShuffleExchangeExecLike =>
-            ShuffleQueryStageExec(currentStageId, optimizedPlan)
-          case b: BroadcastExchangeExecLike =>
-            BroadcastQueryStageExec(currentStageId, optimizedPlan)
+      case w @ WholeStageCodegenExec(c: ColumnarToRowExecLike) =>
+        c.child match {
+          case InputAdapter(s: ShuffleExchangeExecLike) =>
+            ShuffleQueryStageExec(currentStageId, s)
+          case InputAdapter(b: BroadcastExchangeExecLike) =>
+            BroadcastQueryStageExec(currentStageId, b)
           case other =>
             println("No match")
             println(other.getClass)

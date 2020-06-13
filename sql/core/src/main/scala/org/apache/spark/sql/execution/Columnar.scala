@@ -49,6 +49,10 @@ class ColumnarRule {
   def postColumnarTransitions: Rule[SparkPlan] = plan => plan
 }
 
+trait ColumnarToRowExecLike {
+  def child: SparkPlan
+}
+
 /**
  * Provides a common executor to translate an [[RDD]] of [[ColumnarBatch]] into an [[RDD]] of
  * [[InternalRow]]. This is inserted whenever such a transition is determined to be needed.
@@ -57,7 +61,8 @@ class ColumnarRule {
  * [[org.apache.spark.sql.execution.python.ArrowEvalPythonExec]] and
  * [[MapPartitionsInRWithArrowExec]]. Eventually this should replace those implementations.
  */
-case class ColumnarToRowExec(child: SparkPlan) extends UnaryExecNode with CodegenSupport {
+case class ColumnarToRowExec(child: SparkPlan)
+    extends UnaryExecNode with ColumnarToRowExecLike with CodegenSupport {
 
   try {
     assert(child.supportsColumnar, s"child is not columnar: ${child.getClass} $child")

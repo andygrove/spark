@@ -41,7 +41,6 @@ import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
 
 trait ShuffleExchangeExecLike {
-  def replaceChild(child: SparkPlan): SparkPlan
 }
 
 /**
@@ -102,10 +101,6 @@ case class ShuffleExchangeExec(
       cachedShuffleRDD = new ShuffledRowRDD(shuffleDependency, readMetrics)
     }
     cachedShuffleRDD
-  }
-
-  override def replaceChild(newChild: SparkPlan): SparkPlan = {
-    this.copy(child = newChild)
   }
 
 }

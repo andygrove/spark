@@ -40,7 +40,6 @@ import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.util.{SparkFatalException, ThreadUtils}
 
 trait BroadcastExchangeExecLike {
-  def replaceChild(child: SparkPlan): SparkPlan
   def completionFuture: scala.concurrent.Future[broadcast.Broadcast[Any]]
   def asExchange(): Exchange
 }
@@ -69,10 +68,6 @@ case class BroadcastExchangeExec(
   }
 
   override def asExchange(): Exchange = this
-
-  override def replaceChild(newChild: SparkPlan): SparkPlan = {
-    this.copy(child = newChild)
-  }
 
   @transient
   private lazy val promise = Promise[broadcast.Broadcast[Any]]()
