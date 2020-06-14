@@ -156,6 +156,8 @@ case class AdaptiveSparkPlanExec(
   def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
     if (isFinalPlan) return currentPhysicalPlan
 
+    mode = Some(InitialPlanning())
+
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
     // `plan.queryExecution.rdd`, we need to set active session here as new plan nodes can be
     // created in the middle of the execution.
@@ -207,6 +209,8 @@ case class AdaptiveSparkPlanExec(
           cleanUpAndThrowException(errors, None)
         }
 
+        mode = Some(Reoptimizing())
+
         // Try re-optimizing and re-planning. Adopt the new plan if its cost is equal to or less
         // than that of the current plan; otherwise keep the current physical plan together with
         // the current logical plan since the physical plan's logical links point to the logical
@@ -239,6 +243,8 @@ case class AdaptiveSparkPlanExec(
       isFinalPlan = true
 
       println("final plan:\n" + currentPhysicalPlan.toString())
+
+      mode = None
 
       executionId.foreach(onUpdatePlan(_, Seq(currentPhysicalPlan)))
       currentPhysicalPlan
@@ -595,7 +601,15 @@ case class AdaptiveSparkPlanExec(
   }
 }
 
+sealed trait PlanningMode;
+case class InitialPlanning() extends PlanningMode
+case class Reoptimizing() extends PlanningMode
+
 object AdaptiveSparkPlanExec {
+
+  @volatile
+  var mode: Option[PlanningMode] = None
+
   private[adaptive] val executionContext = ExecutionContext.fromExecutorService(
     ThreadUtils.newDaemonCachedThreadPool("QueryStageCreator", 16))
 

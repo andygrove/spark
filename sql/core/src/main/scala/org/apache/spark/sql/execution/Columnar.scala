@@ -20,6 +20,7 @@ package org.apache.spark.sql.execution
 import scala.collection.JavaConverters._
 
 import org.apache.spark.{broadcast, TaskContext}
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, SortOrder, SpecializedGetters, UnsafeProjection}
@@ -27,6 +28,7 @@ import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.rules.Rule
+import org.apache.spark.sql.execution.adaptive.BroadcastQueryStageExec
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.execution.vectorized.{OffHeapColumnVector, OnHeapColumnVector, WritableColumnVector}
 import org.apache.spark.sql.internal.SQLConf
@@ -522,7 +524,13 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
       ColumnarToRowExec(insertRowToColumnar(plan))
     } else {
       println(s"insertTransitions plan is not columnar, recursing into children")
-      plan.withNewChildren(plan.children.map(insertTransitions))
+      if (plan.isInstanceOf[ColumnarToRowExecLike]) {
+        //TODO hack to work around makeCopy failing ... I don't fully understand this issue
+
+        plan
+      } else {
+        plan.withNewChildren(plan.children.map(insertTransitions))
+      }
     }
   }
 
@@ -530,7 +538,10 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r: ColumnarRule) => {
       println(s"BEFORE columnarRule $r on preInsertPlan:\n$preInsertPlan")
-      preInsertPlan = r.preColumnarTransitions(preInsertPlan)
+      preInsertPlan = preInsertPlan match {
+        case _: BroadcastQueryStageExec =>preInsertPlan
+        case _ => r.preColumnarTransitions (preInsertPlan)
+      }
       println(s"AFTER columnarRule $r on preInsertPlan:\n$preInsertPlan")
     })
     println(s"BEFORE insertTransitions:\n$preInsertPlan")
@@ -538,7 +549,10 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     println(s"AFTER insertTransitions:\n$postInsertPlan")
     columnarRules.reverse.foreach((r : ColumnarRule) => {
       println(s"BEFORE columnarRule $r on postInsertPlan:\n$postInsertPlan")
-      postInsertPlan = r.postColumnarTransitions(postInsertPlan)
+      postInsertPlan = postInsertPlan match {
+        case _: BroadcastQueryStageExec => postInsertPlan
+        case _ => r.postColumnarTransitions(postInsertPlan)
+      }
       println(s"AFTER columnarRule $r on postInsertPlan:\n$postInsertPlan")
     })
     postInsertPlan
