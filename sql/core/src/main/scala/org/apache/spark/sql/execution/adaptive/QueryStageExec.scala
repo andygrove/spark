@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.{Future, Promise}
 
 import org.apache.spark.{FutureAction, MapOutputStatistics, SparkException}
+
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -32,6 +33,7 @@ import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.ThreadUtils
 
 /**
@@ -143,9 +145,14 @@ case class ShuffleQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
 
+  /**
+   * Return true if this stage of the plan supports columnar execution.
+   */
+  override def supportsColumnar: Boolean = plan.supportsColumnar
+
   @transient val shuffle = plan match {
-    case s: ShuffleExchangeExec => s
-    case ReusedExchangeExec(_, s: ShuffleExchangeExec) => s
+    case s: ShuffleExchangeExecLike => s
+    case ReusedExchangeExec(_, s: ShuffleExchangeExecLike) => s
     case _ =>
       throw new IllegalStateException("wrong plan for shuffle stage:\n " + plan.treeString)
   }
@@ -157,7 +164,7 @@ case class ShuffleQueryStageExec(
   override def newReuseInstance(newStageId: Int, newOutput: Seq[Attribute]): QueryStageExec = {
     ShuffleQueryStageExec(
       newStageId,
-      ReusedExchangeExec(newOutput, shuffle))
+      ReusedExchangeExec(newOutput, shuffle.asExchange))
   }
 
   override def cancel(): Unit = {

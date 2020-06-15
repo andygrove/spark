@@ -351,18 +351,18 @@ case class AdaptiveSparkPlanExec(
               newPlan = stage, allChildStagesMaterialized = false, newStages = Seq(stage))
 
           case _ =>
-            println("createQueryStages: BEFORE createQueryStages")
+//            println("createQueryStages: BEFORE createQueryStages")
             val result = createQueryStages(e.child)
-            println(s"createQueryStages: AFTER createQueryStages:\n$result")
-            println("createQueryStages: BEFORE e.withNewChildren")
+//            println(s"createQueryStages: AFTER createQueryStages:\n$result")
+//            println("createQueryStages: BEFORE e.withNewChildren")
             val newPlan = e.withNewChildren(Seq(result.newPlan)).asInstanceOf[Exchange]
-            println(s"createQueryStages: AFTER e.withNewChildren:\n$newPlan")
+//            println(s"createQueryStages: AFTER e.withNewChildren:\n$newPlan")
             // Create a query stage only when all the child query stages are ready.
             if (result.allChildStagesMaterialized) {
-              println(s"createQueryStages: result.allChildStagesMaterialized)=TRUE")
-              println(s"createQueryStages AFTER newQueryStage, plan:\n$newPlan")
+//              println(s"createQueryStages: result.allChildStagesMaterialized)=TRUE")
+//              println(s"createQueryStages AFTER newQueryStage, plan:\n$newPlan")
               var newStage = newQueryStage(newPlan)
-              println(s"createQueryStages AFTER newQueryStage, STAGE:\n$newStage")
+//              println(s"createQueryStages AFTER newQueryStage, STAGE:\n$newStage")
               if (conf.exchangeReuseEnabled) {
                 // Check the `stageCache` again for reuse. If a match is found, ditch the new stage
                 // and reuse the existing stage found in the `stageCache`, otherwise update the
@@ -377,7 +377,7 @@ case class AdaptiveSparkPlanExec(
               CreateStageResult(newPlan = newStage,
                 allChildStagesMaterialized = false, newStages = Seq(newStage))
             } else {
-              println(s"createQueryStages: result.allChildStagesMaterialized)=FALSE")
+//              println(s"createQueryStages: result.allChildStagesMaterialized)=FALSE")
               CreateStageResult(newPlan = newPlan,
                 allChildStagesMaterialized = false, newStages = result.newStages)
             }
@@ -405,21 +405,16 @@ case class AdaptiveSparkPlanExec(
     println(s"newQueryStage (stageId=$currentStageId):\n$e")
     val optimizedPlan = applyPhysicalRules(e, queryStageOptimizerRules)
     val queryStage = optimizedPlan match {
-      case s: ShuffleExchangeExecLike =>
+      case _: ShuffleExchangeExecLike =>
         ShuffleQueryStageExec(currentStageId, optimizedPlan)
-      case b: BroadcastExchangeExecLike =>
+      case _: BroadcastExchangeExecLike =>
         BroadcastQueryStageExec(currentStageId, optimizedPlan)
-      case w @ WholeStageCodegenExec(c: ColumnarToRowExecLike) =>
+      case _ @ WholeStageCodegenExec(c: ColumnarToRowExecLike) =>
         c.child match {
           case InputAdapter(s: ShuffleExchangeExecLike) =>
             ShuffleQueryStageExec(currentStageId, s)
           case InputAdapter(b: BroadcastExchangeExecLike) =>
             BroadcastQueryStageExec(currentStageId, b)
-          case other =>
-            println("No match")
-            println(other.getClass)
-            println(other.isInstanceOf[BroadcastExchangeExecLike])
-            throw new UnsupportedOperationException(other.getClass.getName)
         }
     }
     currentStageId += 1

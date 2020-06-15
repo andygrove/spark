@@ -28,7 +28,7 @@ import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.adaptive.BroadcastQueryStageExec
+import org.apache.spark.sql.execution.adaptive.{BroadcastQueryStageExec, QueryStageExec, ShuffleQueryStageExec}
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.execution.vectorized.{OffHeapColumnVector, OnHeapColumnVector, WritableColumnVector}
 import org.apache.spark.sql.internal.SQLConf
@@ -537,23 +537,23 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
   def apply(plan: SparkPlan): SparkPlan = {
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r: ColumnarRule) => {
-      println(s"BEFORE columnarRule $r on preInsertPlan:\n$preInsertPlan")
+//      println(s"BEFORE columnarRule $r on preInsertPlan:\n$preInsertPlan")
       preInsertPlan = preInsertPlan match {
-        case _: BroadcastQueryStageExec =>preInsertPlan
+        case _: QueryStageExec => preInsertPlan
         case _ => r.preColumnarTransitions (preInsertPlan)
       }
-      println(s"AFTER columnarRule $r on preInsertPlan:\n$preInsertPlan")
+//      println(s"AFTER columnarRule $r on preInsertPlan:\n$preInsertPlan")
     })
     println(s"BEFORE insertTransitions:\n$preInsertPlan")
     var postInsertPlan = insertTransitions(preInsertPlan)
     println(s"AFTER insertTransitions:\n$postInsertPlan")
     columnarRules.reverse.foreach((r : ColumnarRule) => {
-      println(s"BEFORE columnarRule $r on postInsertPlan:\n$postInsertPlan")
+//      println(s"BEFORE columnarRule $r on postInsertPlan:\n$postInsertPlan")
       postInsertPlan = postInsertPlan match {
-        case _: BroadcastQueryStageExec => postInsertPlan
+        case _: QueryStageExec => postInsertPlan
         case _ => r.postColumnarTransitions(postInsertPlan)
       }
-      println(s"AFTER columnarRule $r on postInsertPlan:\n$postInsertPlan")
+//      println(s"AFTER columnarRule $r on postInsertPlan:\n$postInsertPlan")
     })
     postInsertPlan
   }
