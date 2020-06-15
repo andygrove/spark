@@ -77,10 +77,7 @@ case class BroadcastExchangeExec(
    * Note that calling this field will not start the execution of broadcast job.
    */
   @transient
-  lazy val _completionFuture: scala.concurrent.Future[broadcast.Broadcast[Any]] = promise.future
-
-
-  override def completionFuture: concurrent.Future[Broadcast[Any]] = _completionFuture
+  lazy val completionFuture: scala.concurrent.Future[broadcast.Broadcast[Any]] = promise.future
 
   @transient
   private val timeout: Long = SQLConf.get.broadcastTimeout

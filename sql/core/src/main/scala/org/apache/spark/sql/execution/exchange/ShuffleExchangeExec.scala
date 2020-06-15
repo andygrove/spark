@@ -62,19 +62,17 @@ case class ShuffleExchangeExec(
 
   private lazy val writeMetrics =
     SQLShuffleWriteMetricsReporter.createShuffleWriteMetrics(sparkContext)
-  private[sql] lazy val _readMetrics =
+  lazy val readMetrics =
     SQLShuffleReadMetricsReporter.createShuffleReadMetrics(sparkContext)
   override lazy val metrics = Map(
     "dataSize" -> SQLMetrics.createSizeMetric(sparkContext, "data size")
-  ) ++ _readMetrics ++ writeMetrics
+  ) ++ readMetrics ++ writeMetrics
 
   override def nodeName: String = "Exchange"
 
   override def shuffleDependencyColumnar: ShuffleDependency[Int, ColumnarBatch, ColumnarBatch] = {
     throw new IllegalStateException()
   }
-
-  override def readMetrics: Map[String, SQLMetric] = _readMetrics
 
   override def asExchange: Exchange = this
 
@@ -115,7 +113,7 @@ case class ShuffleExchangeExec(
   protected override def doExecute(): RDD[InternalRow] = attachTree(this, "execute") {
     // Returns the same ShuffleRowRDD if this plan is used by multiple plans.
     if (cachedShuffleRDD == null) {
-      cachedShuffleRDD = new ShuffledRowRDD(shuffleDependency, _readMetrics)
+      cachedShuffleRDD = new ShuffledRowRDD(shuffleDependency, readMetrics)
     }
     cachedShuffleRDD
   }
