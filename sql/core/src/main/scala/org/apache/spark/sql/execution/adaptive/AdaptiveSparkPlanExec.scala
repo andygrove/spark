@@ -94,13 +94,6 @@ case class AdaptiveSparkPlanExec(
     ensureRequirements
   )
 
-  // A list of physical plan rules to be applied after creation of query stages, allowing for
-  // columnar transitions to be inserted between stages.
-  private def postStageCreationRules: Seq[Rule[SparkPlan]] = Seq(
-    ensureRequirements,
-    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
-  )
-
   // A list of physical optimizer rules to be applied to a new stage before its execution. These
   // optimizations should be stage-independent.
   @transient private val queryStageOptimizerRules: Seq[Rule[SparkPlan]] = Seq(
@@ -112,6 +105,13 @@ case class AdaptiveSparkPlanExec(
     OptimizeLocalShuffleReader(conf),
     ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules),
     CollapseCodegenStages(conf)
+  )
+
+  // A list of physical plan rules to be applied after creation of query stages, allowing for
+  // columnar transitions to be inserted between stages.
+  private def postStageCreationRules: Seq[Rule[SparkPlan]] = Seq(
+    ensureRequirements,
+    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
   )
 
   @transient private val costEvaluator = SimpleCostEvaluator

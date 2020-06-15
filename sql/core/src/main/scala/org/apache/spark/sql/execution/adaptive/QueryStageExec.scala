@@ -77,7 +77,6 @@ abstract class QueryStageExec extends LeafExecNode {
    * stage is ready.
    */
   final def materialize(): Future[Any] = executeQuery {
-    println("Materializing query stage")
     doMaterialize()
   }
 

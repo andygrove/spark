@@ -523,7 +523,7 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r: ColumnarRule) => {
       preInsertPlan = preInsertPlan match {
-        // transitions are already handled by the time QueryStageExec is created
+        // no need to modify QueryStageExec during AQE re-optimization
         case _: QueryStageExec => preInsertPlan
         case _ => r.preColumnarTransitions (preInsertPlan)
       }
@@ -533,7 +533,7 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     println(s"AFTER insertTransitions:\n$postInsertPlan")
     columnarRules.reverse.foreach((r : ColumnarRule) => {
       postInsertPlan = postInsertPlan match {
-        // transitions are already handled by the time QueryStageExec is created
+        // no need to modify QueryStageExec during AQE re-optimization
         case _: QueryStageExec => postInsertPlan
         case _ => r.postColumnarTransitions(postInsertPlan)
       }
