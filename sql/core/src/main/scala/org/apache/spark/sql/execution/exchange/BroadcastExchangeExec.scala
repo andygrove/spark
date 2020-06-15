@@ -95,17 +95,7 @@ case class BroadcastExchangeExec(
               interruptOnCancel = true)
             val beforeCollect = System.nanoTime()
             // Use executeCollect/executeCollectIterator to avoid conversion to Scala types
-            val x = Try(child.executeCollectIterator())
-            if (x.isFailure) {
-              // scalastyle:off println
-              println(s"** this=$this")
-              // println(s"** child=$child")
-              val e = x.failed.get
-              // e.printStackTrace()
-              // scalastyle:on println
-              throw e
-            }
-            val (numRows, input) = x.get
+            val (numRows, input) = child.executeCollectIterator()
             if (numRows >= MAX_BROADCAST_TABLE_ROWS) {
               throw new SparkException(
                 s"Cannot broadcast the table over $MAX_BROADCAST_TABLE_ROWS rows: $numRows rows")
