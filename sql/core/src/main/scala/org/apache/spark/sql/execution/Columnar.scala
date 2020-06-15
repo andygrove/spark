@@ -20,7 +20,6 @@ package org.apache.spark.sql.execution
 import scala.collection.JavaConverters._
 
 import org.apache.spark.{broadcast, TaskContext}
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, SortOrder, SpecializedGetters, UnsafeProjection}
@@ -65,14 +64,7 @@ trait ColumnarToRowExecLike {
  */
 case class ColumnarToRowExec(child: SparkPlan)
     extends UnaryExecNode with ColumnarToRowExecLike with CodegenSupport {
-
-  try {
-    assert(child.supportsColumnar, s"child is not columnar: ${child.getClass} $child")
-  } catch {
-    case e: Throwable =>
-      e.printStackTrace()
-      throw e
-  }
+  assert(child.supportsColumnar)
 
   override def output: Seq[Attribute] = child.output
 
@@ -500,14 +492,11 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
    * Inserts an transition to columnar formatted data.
    */
   private def insertRowToColumnar(plan: SparkPlan): SparkPlan = {
-    println(s"insertRowToColumnar:\n$plan")
     if (!plan.supportsColumnar) {
-      println(s"insertRowToColumnar plan is not columnar, inserting RowToColumnar")
       // The tree feels kind of backwards
       // Columnar Processing will start here, so transition from row to columnar
       RowToColumnarExec(insertTransitions(plan))
     } else {
-      println(s"insertRowToColumnar plan is columnar, recursing into children")
       plan.withNewChildren(plan.children.map(insertRowToColumnar))
     }
   }
@@ -516,17 +505,13 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
    * Inserts RowToColumnarExecs and ColumnarToRowExecs where needed.
    */
   private def insertTransitions(plan: SparkPlan): SparkPlan = {
-    println(s"insertTransitions:\n$plan")
     if (plan.supportsColumnar) {
-      println(s"insertTransitions plan is columnar, inserting ColumnarToRow")
       // The tree feels kind of backwards
       // This is the end of the columnar processing so go back to rows
       ColumnarToRowExec(insertRowToColumnar(plan))
     } else {
-      println(s"insertTransitions plan is not columnar, recursing into children")
       if (plan.isInstanceOf[ColumnarToRowExecLike]) {
         //TODO hack to work around makeCopy failing ... I don't fully understand this issue
-
         plan
       } else {
         plan.withNewChildren(plan.children.map(insertTransitions))
@@ -537,23 +522,21 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
   def apply(plan: SparkPlan): SparkPlan = {
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r: ColumnarRule) => {
-//      println(s"BEFORE columnarRule $r on preInsertPlan:\n$preInsertPlan")
       preInsertPlan = preInsertPlan match {
+        // transitions are already handled by the time QueryStageExec is created
         case _: QueryStageExec => preInsertPlan
         case _ => r.preColumnarTransitions (preInsertPlan)
       }
-//      println(s"AFTER columnarRule $r on preInsertPlan:\n$preInsertPlan")
     })
     println(s"BEFORE insertTransitions:\n$preInsertPlan")
     var postInsertPlan = insertTransitions(preInsertPlan)
     println(s"AFTER insertTransitions:\n$postInsertPlan")
     columnarRules.reverse.foreach((r : ColumnarRule) => {
-//      println(s"BEFORE columnarRule $r on postInsertPlan:\n$postInsertPlan")
       postInsertPlan = postInsertPlan match {
+        // transitions are already handled by the time QueryStageExec is created
         case _: QueryStageExec => postInsertPlan
         case _ => r.postColumnarTransitions(postInsertPlan)
       }
-//      println(s"AFTER columnarRule $r on postInsertPlan:\n$postInsertPlan")
     })
     postInsertPlan
   }

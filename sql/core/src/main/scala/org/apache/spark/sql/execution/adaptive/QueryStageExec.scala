@@ -77,6 +77,7 @@ abstract class QueryStageExec extends LeafExecNode {
    * stage is ready.
    */
   final def materialize(): Future[Any] = executeQuery {
+    println("Materializing query stage")
     doMaterialize()
   }
 
@@ -150,7 +151,9 @@ case class ShuffleQueryStageExec(
    */
   override def supportsColumnar: Boolean = plan.supportsColumnar
 
-  @transient val shuffle = plan match {
+  override def toString: String = nodeName + s" [child=${plan.getClass}] " + super.toString
+
+  @transient val shuffle: ShuffleExchangeExecLike = plan match {
     case s: ShuffleExchangeExecLike => s
     case ReusedExchangeExec(_, s: ShuffleExchangeExecLike) => s
     case _ =>
@@ -185,6 +188,7 @@ case class ShuffleQueryStageExec(
     val stats = resultOption.get.asInstanceOf[MapOutputStatistics]
     Option(stats)
   }
+
 }
 
 /**

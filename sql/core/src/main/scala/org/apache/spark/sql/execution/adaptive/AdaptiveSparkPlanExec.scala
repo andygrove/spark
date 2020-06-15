@@ -168,6 +168,7 @@ case class AdaptiveSparkPlanExec(
       val events = new LinkedBlockingQueue[StageMaterializationEvent]()
       val errors = new mutable.ArrayBuffer[Throwable]()
       var stagesToReplace = Seq.empty[QueryStageExec]
+
       while (!result.allChildStagesMaterialized) {
         currentPhysicalPlan = result.newPlan
         if (result.newStages.nonEmpty) {
@@ -177,10 +178,13 @@ case class AdaptiveSparkPlanExec(
           // Start materialization of all new stages and fail fast if any stages failed eagerly
           result.newStages.foreach { stage =>
             try {
+              println("Materializing stage")
               stage.materialize().onComplete { res =>
                 if (res.isSuccess) {
+                  println("Materialized stage OK")
                   events.offer(StageSuccess(stage, res.get))
                 } else {
+                  println("Failed to materialized stage")
                   events.offer(StageFailure(stage, res.failed.get))
                 }
               }(AdaptiveSparkPlanExec.executionContext)
@@ -190,6 +194,8 @@ case class AdaptiveSparkPlanExec(
             }
           }
         }
+
+        println("Done materializing stages")
 
         // Wait on the next completed stage, which indicates new stats are available and probably
         // new stages can be created. There might be other stages that finish at around the same
@@ -501,11 +507,11 @@ case class AdaptiveSparkPlanExec(
         val newLogicalPlan = logicalPlan.transformDown {
           case p if p.eq(logicalNode) => newLogicalNode
         }
-        assert(newLogicalPlan != logicalPlan,
-          s"logicalNode: $logicalNode; " +
-            s"logicalPlan: $logicalPlan " +
-            s"physicalPlan: $currentPhysicalPlan" +
-            s"stage: $stage")
+//        assert(newLogicalPlan != logicalPlan,
+//          s"logicalNode: $logicalNode; " +
+//            s"logicalPlan: $logicalPlan " +
+//            s"physicalPlan: $currentPhysicalPlan" +
+//            s"stage: $stage")
         logicalPlan = newLogicalPlan
 
       case _ => // Ignore those earlier stages that have been wrapped in later stages.
@@ -626,9 +632,9 @@ object AdaptiveSparkPlanExec {
   def applyPhysicalRules(plan: SparkPlan, rules: Seq[Rule[SparkPlan]]): SparkPlan = {
     rules.foldLeft(plan) {
       case (sp, rule) =>
-        println(s"BEFORE rule $rule:\n$sp")
+//        println(s"BEFORE rule $rule:\n$sp")
         val sp2 = rule.apply(sp)
-        println(s"AFTER rule $rule:\n$sp2")
+//        println(s"AFTER rule $rule:\n$sp2")
         sp2
     }
   }
