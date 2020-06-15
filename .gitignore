@@ -99,5 +99,3 @@ spark-warehouse/
 
 # For SBT
 .jvmopts
-
-rapids-plugin-4-spark
