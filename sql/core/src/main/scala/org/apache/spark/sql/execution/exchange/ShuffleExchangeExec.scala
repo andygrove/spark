@@ -117,7 +117,6 @@ case class ShuffleExchangeExec(
     }
     cachedShuffleRDD
   }
-
 }
 
 object ShuffleExchangeExec {

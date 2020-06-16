@@ -24,6 +24,7 @@ import org.apache.spark.sql.catalyst.plans.physical.{Partitioning, UnknownPartit
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange.{ReusedExchangeExec, ShuffleExchangeExec}
 
+trait CustomShuffleReaderExecLike
 
 /**
  * A wrapper of shuffle query stage, which follows the given partition arrangement.
@@ -36,7 +37,7 @@ import org.apache.spark.sql.execution.exchange.{ReusedExchangeExec, ShuffleExcha
 case class CustomShuffleReaderExec private(
     child: SparkPlan,
     partitionSpecs: Seq[ShufflePartitionSpec],
-    description: String) extends UnaryExecNode {
+    description: String) extends UnaryExecNode with CustomShuffleReaderExecLike {
 
   override def output: Seq[Attribute] = child.output
   override lazy val outputPartitioning: Partitioning = {

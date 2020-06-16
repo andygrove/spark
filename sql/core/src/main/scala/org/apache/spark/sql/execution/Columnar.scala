@@ -20,6 +20,7 @@ package org.apache.spark.sql.execution
 import scala.collection.JavaConverters._
 
 import org.apache.spark.{broadcast, TaskContext}
+
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, SortOrder, SpecializedGetters, UnsafeProjection}
@@ -27,7 +28,7 @@ import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.adaptive.{BroadcastQueryStageExec, QueryStageExec, ShuffleQueryStageExec}
+import org.apache.spark.sql.execution.adaptive.{BroadcastQueryStageExec, CustomShuffleReaderExec, CustomShuffleReaderExecLike, QueryStageExec, ShuffleQueryStageExec}
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.execution.vectorized.{OffHeapColumnVector, OnHeapColumnVector, WritableColumnVector}
 import org.apache.spark.sql.internal.SQLConf
@@ -48,6 +49,10 @@ import org.apache.spark.sql.vectorized.{ColumnarBatch, ColumnVector}
 class ColumnarRule {
   def preColumnarTransitions: Rule[SparkPlan] = plan => plan
   def postColumnarTransitions: Rule[SparkPlan] = plan => plan
+}
+
+trait RowToColumnarExecLike {
+  def child: SparkPlan
 }
 
 trait ColumnarToRowExecLike {
@@ -408,7 +413,7 @@ private object RowToColumnConverter {
  * populate with [[RowToColumnConverter]], but the performance requirements are different and it
  * would only be to reduce code.
  */
-case class RowToColumnarExec(child: SparkPlan) extends UnaryExecNode {
+case class RowToColumnarExec(child: SparkPlan) extends UnaryExecNode with RowToColumnarExecLike {
   override def output: Seq[Attribute] = child.output
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
@@ -497,7 +502,12 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
       // Columnar Processing will start here, so transition from row to columnar
       RowToColumnarExec(insertTransitions(plan))
     } else {
-      plan.withNewChildren(plan.children.map(insertRowToColumnar))
+      if (plan.isInstanceOf[RowToColumnarExecLike]) {
+        // hack to prevent double nesting of row to column
+        plan
+      } else {
+        plan.withNewChildren(plan.children.map(insertRowToColumnar))
+      }
     }
   }
 
@@ -511,7 +521,7 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
       ColumnarToRowExec(insertRowToColumnar(plan))
     } else {
       if (plan.isInstanceOf[ColumnarToRowExecLike]) {
-        //TODO hack to work around makeCopy failing ... I don't fully understand this issue
+        // hack to prevent double nesting of column to row
         plan
       } else {
         plan.withNewChildren(plan.children.map(insertTransitions))
@@ -522,9 +532,12 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
   def apply(plan: SparkPlan): SparkPlan = {
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r: ColumnarRule) => {
+      println(s"Applying rule $r to pre-insertion plan: $preInsertPlan")
       preInsertPlan = preInsertPlan match {
         // no need to modify QueryStageExec during AQE re-optimization
-        case _: QueryStageExec => preInsertPlan
+        case _: QueryStageExec | _: CustomShuffleReaderExecLike =>
+          println("Skipping query stage")
+          preInsertPlan
         case _ => r.preColumnarTransitions (preInsertPlan)
       }
     })
@@ -532,9 +545,12 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     var postInsertPlan = insertTransitions(preInsertPlan)
     println(s"AFTER insertTransitions:\n$postInsertPlan")
     columnarRules.reverse.foreach((r : ColumnarRule) => {
+      println(s"Applying rule $r to pre-insertion plan: $postInsertPlan")
       postInsertPlan = postInsertPlan match {
         // no need to modify QueryStageExec during AQE re-optimization
-        case _: QueryStageExec => postInsertPlan
+        case _: QueryStageExec | _: CustomShuffleReaderExecLike =>
+          println("Skipping query stage")
+          postInsertPlan
         case _ => r.postColumnarTransitions(postInsertPlan)
       }
     })

@@ -178,8 +178,10 @@ case class AdaptiveSparkPlanExec(
           // Start materialization of all new stages and fail fast if any stages failed eagerly
           result.newStages.foreach { stage =>
             try {
+              println("Materializing stage")
               stage.materialize().onComplete { res =>
                 if (res.isSuccess) {
+                  println("Materialized stage OK")
                   events.offer(StageSuccess(stage, res.get))
                 } else {
                   events.offer(StageFailure(stage, res.failed.get))
@@ -488,11 +490,16 @@ case class AdaptiveSparkPlanExec(
         val newLogicalPlan = logicalPlan.transformDown {
           case p if p.eq(logicalNode) => newLogicalNode
         }
-        assert(newLogicalPlan != logicalPlan,
-          s"logicalNode: $logicalNode; " +
-            s"logicalPlan: $logicalPlan " +
-            s"physicalPlan: $currentPhysicalPlan" +
-            s"stage: $stage")
+        if (newLogicalPlan == logicalPlan) {
+          println("Warning! Replacing with identical logical plan!")
+          println(s"logicalPlan:\n$logicalPlan")
+          println(s"newLogicalPlan:\n$newLogicalPlan")
+        }
+//        assert(newLogicalPlan != logicalPlan,
+//          s"logicalNode: $logicalNode; " +
+//            s"logicalPlan: $logicalPlan " +
+//            s"physicalPlan: $currentPhysicalPlan" +
+//            s"stage: $stage")
         logicalPlan = newLogicalPlan
 
       case _ => // Ignore those earlier stages that have been wrapped in later stages.
@@ -612,7 +619,11 @@ object AdaptiveSparkPlanExec {
    * Apply a list of physical operator rules on a [[SparkPlan]].
    */
   def applyPhysicalRules(plan: SparkPlan, rules: Seq[Rule[SparkPlan]]): SparkPlan = {
-    rules.foldLeft(plan) { case (sp, rule) => rule.apply(sp) }
+    rules.foldLeft(plan) {
+      case (sp, rule) =>
+        println(s"Applying rule: $rule")
+        rule.apply(sp)
+    }
   }
 }
 
