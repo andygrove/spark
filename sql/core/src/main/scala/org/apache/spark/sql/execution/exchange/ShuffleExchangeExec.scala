@@ -33,7 +33,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
 import org.apache.spark.sql.catalyst.expressions.{Attribute, BoundReference, Divide, Literal, UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.catalyst.expressions.codegen.LazilyGeneratedOrdering
-import org.apache.spark.sql.catalyst.plans.physical._
+import org.apache.spark.sql.catalyst.plans.physical.{Partitioning, _}
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics, SQLShuffleReadMetricsReporter, SQLShuffleWriteMetricsReporter}
 import org.apache.spark.sql.internal.SQLConf
@@ -50,6 +50,7 @@ trait ShuffleExchangeExecLike {
   def supportsColumnar: Boolean
   def shuffleDependency : ShuffleDependency[Int, InternalRow, InternalRow]
   def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
+  def withPartitioning(partitioning: Partitioning): SparkPlan
 }
 
 /**
@@ -69,6 +70,9 @@ case class ShuffleExchangeExec(
   ) ++ readMetrics ++ writeMetrics
 
   override def nodeName: String = "Exchange"
+
+  override def withPartitioning(partitioning: Partitioning): SparkPlan =
+    ShuffleExchangeExec(partitioning, child)
 
   override def shuffleDependencyColumnar: ShuffleDependency[Int, ColumnarBatch, ColumnarBatch] = {
     throw new IllegalStateException()

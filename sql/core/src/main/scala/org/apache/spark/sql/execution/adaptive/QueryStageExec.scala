@@ -197,10 +197,6 @@ case class BroadcastQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
 
-
-  /**
-   * Return true if this stage of the plan supports columnar execution.
-   */
   override def supportsColumnar: Boolean = plan.supportsColumnar
 
   @transient val broadcast = plan match {

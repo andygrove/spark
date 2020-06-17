@@ -85,7 +85,11 @@ case class AdaptiveSparkPlanExec(
     )
   }
 
-  @transient private val ensureRequirements = EnsureRequirements(conf)
+  // TODO need a mechanism for the plugin to provide this rule
+  @transient private val ensureRequirements: Rule[SparkPlan] = //EnsureRequirements(conf)
+    Class.forName("ai.rapids.spark.GpuEnsureRequirements")
+      .getConstructor(classOf[SQLConf]).newInstance(conf)
+      .asInstanceOf[Rule[SparkPlan]]
 
   // A list of physical plan rules to be applied before creation of query stages. The physical
   // plan should reach a final status of query stages (i.e., no more addition or removal of
@@ -101,8 +105,8 @@ case class AdaptiveSparkPlanExec(
     CoalesceShufflePartitions(context.session),
     // The following two rules need to make use of 'CustomShuffleReaderExec.partitionSpecs'
     // added by `CoalesceShufflePartitions`. So they must be executed after it.
-    OptimizeSkewedJoin(conf),
-    OptimizeLocalShuffleReader(conf),
+//    OptimizeSkewedJoin(conf),
+//    OptimizeLocalShuffleReader(conf, ensureRequirements),
     ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules),
     CollapseCodegenStages(conf)
   )
@@ -110,8 +114,8 @@ case class AdaptiveSparkPlanExec(
   // A list of physical plan rules to be applied after creation of query stages, allowing for
   // columnar transitions to be inserted between stages.
   private def postStageCreationRules: Seq[Rule[SparkPlan]] = Seq(
-    ensureRequirements,
-    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
+    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules),
+    ensureRequirements
   )
 
   @transient private val costEvaluator = SimpleCostEvaluator
@@ -178,10 +182,10 @@ case class AdaptiveSparkPlanExec(
           // Start materialization of all new stages and fail fast if any stages failed eagerly
           result.newStages.foreach { stage =>
             try {
-              println("Materializing stage")
+              println(s"Materializing stage ${stage.id}")
               stage.materialize().onComplete { res =>
                 if (res.isSuccess) {
-                  println("Materialized stage OK")
+                  println(s"Materialized stage ${stage.id} OK")
                   events.offer(StageSuccess(stage, res.get))
                 } else {
                   events.offer(StageFailure(stage, res.failed.get))
@@ -621,8 +625,10 @@ object AdaptiveSparkPlanExec {
   def applyPhysicalRules(plan: SparkPlan, rules: Seq[Rule[SparkPlan]]): SparkPlan = {
     rules.foldLeft(plan) {
       case (sp, rule) =>
-        println(s"Applying rule: $rule")
-        rule.apply(sp)
+        println(s"Applying rule $rule:\n$sp")
+        val newPlan = rule.apply(sp)
+        println(s"After applying rule $rule:\n$newPlan")
+        newPlan
     }
   }
 }

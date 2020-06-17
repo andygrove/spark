@@ -29,6 +29,8 @@ trait BroadcastMode {
   def transform(rows: Iterator[InternalRow], sizeHint: Option[Long]): Any
 
   def canonicalized: BroadcastMode
+
+  def semanticEquals(other: BroadcastMode): Boolean = this == other
 }
 
 /**
