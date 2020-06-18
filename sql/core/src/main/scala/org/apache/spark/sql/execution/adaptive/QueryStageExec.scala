@@ -82,6 +82,8 @@ abstract class QueryStageExec extends LeafExecNode {
 
   def newReuseInstance(newStageId: Int, newOutput: Seq[Attribute]): QueryStageExec
 
+  def withChild(newStageId: Int, child: SparkPlan): QueryStageExec
+
   /**
    * Compute the statistics of the query stage if executed, otherwise None.
    */
@@ -169,6 +171,8 @@ case class ShuffleQueryStageExec(
       ReusedExchangeExec(newOutput, shuffle.asExchange))
   }
 
+  override def withChild(newStageId: Int, child: SparkPlan): QueryStageExec = ShuffleQueryStageExec(newStageId, child)
+
   override def cancel(): Unit = {
     shuffle.mapOutputStatisticsFuture match {
       case action: FutureAction[MapOutputStatistics]
@@ -198,6 +202,10 @@ case class BroadcastQueryStageExec(
     override val plan: SparkPlan) extends QueryStageExec {
 
   override def supportsColumnar: Boolean = plan.supportsColumnar
+
+
+  override def withChild(newStageId: Int, child: SparkPlan): QueryStageExec =
+    BroadcastQueryStageExec(newStageId, child)
 
   @transient val broadcast = plan match {
     case b: BroadcastExchangeExecLike => b

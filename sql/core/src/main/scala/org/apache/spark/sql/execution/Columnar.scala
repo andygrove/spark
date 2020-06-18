@@ -20,7 +20,6 @@ package org.apache.spark.sql.execution
 import scala.collection.JavaConverters._
 
 import org.apache.spark.{broadcast, TaskContext}
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.{Attribute, SortOrder, SpecializedGetters, UnsafeProjection}
@@ -28,7 +27,6 @@ import org.apache.spark.sql.catalyst.expressions.codegen._
 import org.apache.spark.sql.catalyst.expressions.codegen.Block._
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.adaptive.{BroadcastQueryStageExec, CustomShuffleReaderExec, CustomShuffleReaderExecLike, QueryStageExec, ShuffleQueryStageExec}
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.execution.vectorized.{OffHeapColumnVector, OnHeapColumnVector, WritableColumnVector}
 import org.apache.spark.sql.internal.SQLConf
@@ -51,14 +49,6 @@ class ColumnarRule {
   def postColumnarTransitions: Rule[SparkPlan] = plan => plan
 }
 
-trait RowToColumnarExecLike {
-  def child: SparkPlan
-}
-
-trait ColumnarToRowExecLike {
-  def child: SparkPlan
-}
-
 /**
  * Provides a common executor to translate an [[RDD]] of [[ColumnarBatch]] into an [[RDD]] of
  * [[InternalRow]]. This is inserted whenever such a transition is determined to be needed.
@@ -67,8 +57,7 @@ trait ColumnarToRowExecLike {
  * [[org.apache.spark.sql.execution.python.ArrowEvalPythonExec]] and
  * [[MapPartitionsInRWithArrowExec]]. Eventually this should replace those implementations.
  */
-case class ColumnarToRowExec(child: SparkPlan)
-    extends UnaryExecNode with ColumnarToRowExecLike with CodegenSupport {
+case class ColumnarToRowExec(child: SparkPlan) extends UnaryExecNode with CodegenSupport {
   assert(child.supportsColumnar)
 
   override def output: Seq[Attribute] = child.output
@@ -413,7 +402,7 @@ private object RowToColumnConverter {
  * populate with [[RowToColumnConverter]], but the performance requirements are different and it
  * would only be to reduce code.
  */
-case class RowToColumnarExec(child: SparkPlan) extends UnaryExecNode with RowToColumnarExecLike {
+case class RowToColumnarExec(child: SparkPlan) extends UnaryExecNode {
   override def output: Seq[Attribute] = child.output
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
@@ -500,14 +489,10 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     if (!plan.supportsColumnar) {
       // The tree feels kind of backwards
       // Columnar Processing will start here, so transition from row to columnar
+      println(s"** Spark inserting RowToColumnar because ${plan.getClass} is not columnar")
       RowToColumnarExec(insertTransitions(plan))
     } else {
-      if (plan.isInstanceOf[RowToColumnarExecLike]) {
-        // hack to prevent double nesting of row to column
-        plan
-      } else {
-        plan.withNewChildren(plan.children.map(insertRowToColumnar))
-      }
+      plan.withNewChildren(plan.children.map(insertRowToColumnar))
     }
   }
 
@@ -518,42 +503,30 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     if (plan.supportsColumnar) {
       // The tree feels kind of backwards
       // This is the end of the columnar processing so go back to rows
+      println(s"** Spark inserting ColumnarToRow because ${plan.getClass} is columnar")
       ColumnarToRowExec(insertRowToColumnar(plan))
     } else {
-      if (plan.isInstanceOf[ColumnarToRowExecLike]) {
-        // hack to prevent double nesting of column to row
-        plan
-      } else {
-        plan.withNewChildren(plan.children.map(insertTransitions))
-      }
+      plan.withNewChildren(plan.children.map(insertTransitions))
     }
   }
 
   def apply(plan: SparkPlan): SparkPlan = {
     var preInsertPlan: SparkPlan = plan
-    columnarRules.foreach((r: ColumnarRule) => {
-      println(s"Applying rule $r to pre-insertion plan: $preInsertPlan")
-      preInsertPlan = preInsertPlan match {
-        // no need to modify QueryStageExec during AQE re-optimization
-        case _: QueryStageExec | _: CustomShuffleReaderExecLike =>
-          println("Skipping query stage")
-          preInsertPlan
-        case _ => r.preColumnarTransitions (preInsertPlan)
-      }
+    columnarRules.foreach((r : ColumnarRule) => {
+      println(s" ** ${r}")
+      preInsertPlan = r.preColumnarTransitions(preInsertPlan)
     })
-    println(s"BEFORE insertTransitions:\n$preInsertPlan")
-    var postInsertPlan = insertTransitions(preInsertPlan)
-    println(s"AFTER insertTransitions:\n$postInsertPlan")
-    columnarRules.reverse.foreach((r : ColumnarRule) => {
-      println(s"Applying rule $r to pre-insertion plan: $postInsertPlan")
-      postInsertPlan = postInsertPlan match {
-        // no need to modify QueryStageExec during AQE re-optimization
-        case _: QueryStageExec | _: CustomShuffleReaderExecLike =>
-          println("Skipping query stage")
-          postInsertPlan
-        case _ => r.postColumnarTransitions(postInsertPlan)
-      }
-    })
+
+    var postInsertPlan = if (!preInsertPlan.supportsColumnar) {
+      println(s"** Spark inserting transitions because ${preInsertPlan.getClass} is not columnar")
+      insertTransitions(preInsertPlan)
+    } else {
+      println(s"** Spark inserting transitions because ${preInsertPlan.getClass} is columnar")
+      preInsertPlan
+    }
+
+    columnarRules.reverse.foreach((r : ColumnarRule) =>
+      postInsertPlan = r.postColumnarTransitions(postInsertPlan))
     postInsertPlan
   }
 }

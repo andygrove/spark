@@ -23,7 +23,6 @@ import java.util.function.Supplier
 import scala.concurrent.Future
 
 import org.apache.spark._
-
 import org.apache.spark.internal.config
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
@@ -68,6 +67,8 @@ case class ShuffleExchangeExec(
   override lazy val metrics = Map(
     "dataSize" -> SQLMetrics.createSizeMetric(sparkContext, "data size")
   ) ++ readMetrics ++ writeMetrics
+
+  override def supportsColumnar: Boolean = child.supportsColumnar
 
   override def nodeName: String = "Exchange"
 

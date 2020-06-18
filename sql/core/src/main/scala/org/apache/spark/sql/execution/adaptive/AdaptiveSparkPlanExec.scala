@@ -403,16 +403,10 @@ case class AdaptiveSparkPlanExec(
         ShuffleQueryStageExec(currentStageId, optimizedPlan)
       case _: BroadcastExchangeExecLike =>
         BroadcastQueryStageExec(currentStageId, optimizedPlan)
-      case _ @ WholeStageCodegenExec(c: ColumnarToRowExecLike) =>
-        c.child match {
-          case InputAdapter(s: ShuffleExchangeExecLike) =>
-            ShuffleQueryStageExec(currentStageId, s)
-          case InputAdapter(b: BroadcastExchangeExecLike) =>
-            BroadcastQueryStageExec(currentStageId, b)
-        }
     }
     currentStageId += 1
     setLogicalLinkForNewQueryStage(queryStage, e)
+    println(s"newQueryStage() RETURNING\n$queryStage")
     queryStage
   }
 
@@ -494,16 +488,11 @@ case class AdaptiveSparkPlanExec(
         val newLogicalPlan = logicalPlan.transformDown {
           case p if p.eq(logicalNode) => newLogicalNode
         }
-        if (newLogicalPlan == logicalPlan) {
-          println("Warning! Replacing with identical logical plan!")
-          println(s"logicalPlan:\n$logicalPlan")
-          println(s"newLogicalPlan:\n$newLogicalPlan")
-        }
-//        assert(newLogicalPlan != logicalPlan,
-//          s"logicalNode: $logicalNode; " +
-//            s"logicalPlan: $logicalPlan " +
-//            s"physicalPlan: $currentPhysicalPlan" +
-//            s"stage: $stage")
+        assert(newLogicalPlan != logicalPlan,
+          s"logicalNode: $logicalNode; " +
+            s"logicalPlan: $logicalPlan " +
+            s"physicalPlan: $currentPhysicalPlan" +
+            s"stage: $stage")
         logicalPlan = newLogicalPlan
 
       case _ => // Ignore those earlier stages that have been wrapped in later stages.
