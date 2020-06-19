@@ -51,6 +51,11 @@ class ColumnarRule {
   def postColumnarTransitions: Rule[SparkPlan] = plan => plan
 }
 
+// TODO these traits were added to make it easy to modify the columnar transition rules in
+// Spark to avoid creating invalid transitions during AQE, however, a better design would be
+// to deal with these invalid transitions later on in the optimization rules provided by the
+// plugin
+
 trait RowToColumnarExecLike {
   def child: SparkPlan
 }

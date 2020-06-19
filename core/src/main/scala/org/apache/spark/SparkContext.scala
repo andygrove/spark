@@ -2251,7 +2251,7 @@ class SparkContext(config: SparkConf) extends Logging {
    * Submit a map stage for execution. This is currently an internal API only, but might be
    * promoted to DeveloperApi in the future.
    */
-  /*private[spark]*/ def submitMapStage[K, V, C](dependency: ShuffleDependency[K, V, C])
+  /* private[spark] */ def submitMapStage[K, V, C](dependency: ShuffleDependency[K, V, C])
       : SimpleFutureAction[MapOutputStatistics] = {
     assertNotStopped()
     val callSite = getCallSite()
