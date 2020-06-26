@@ -41,17 +41,21 @@ object LogicalQueryStageStrategy extends Strategy with PredicateHelper {
   }
 
   def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
-    case ExtractEquiJoinKeys(joinType, leftKeys, rightKeys, condition, left, right, hint)
-        if isBroadcastStage(left) || isBroadcastStage(right) =>
-      val buildSide = if (isBroadcastStage(left)) BuildLeft else BuildRight
-      Seq(BroadcastHashJoinExec(
-        leftKeys, rightKeys, joinType, buildSide, condition, planLater(left), planLater(right)))
 
-    case j @ Join(left, right, joinType, condition, _)
-        if isBroadcastStage(left) || isBroadcastStage(right) =>
-      val buildSide = if (isBroadcastStage(left)) BuildLeft else BuildRight
-      BroadcastNestedLoopJoinExec(
-        planLater(left), planLater(right), buildSide, joinType, condition) :: Nil
+      //TODO reinstate .. the issue here is that with tpch query 4 for example, it
+      // tried to create a BHJ between CPU and GPU inputs and failed to bind references
+
+//    case ExtractEquiJoinKeys(joinType, leftKeys, rightKeys, condition, left, right, hint)
+//        if isBroadcastStage(left) || isBroadcastStage(right) =>
+//      val buildSide = if (isBroadcastStage(left)) BuildLeft else BuildRight
+//      Seq(BroadcastHashJoinExec(
+//        leftKeys, rightKeys, joinType, buildSide, condition, planLater(left), planLater(right)))
+
+//    case j @ Join(left, right, joinType, condition, _)
+//        if isBroadcastStage(left) || isBroadcastStage(right) =>
+//      val buildSide = if (isBroadcastStage(left)) BuildLeft else BuildRight
+//      BroadcastNestedLoopJoinExec(
+//        planLater(left), planLater(right), buildSide, joinType, condition) :: Nil
 
     case q: LogicalQueryStage =>
       q.physicalPlan :: Nil

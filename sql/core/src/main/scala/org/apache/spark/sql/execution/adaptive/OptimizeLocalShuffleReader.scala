@@ -19,7 +19,7 @@ package org.apache.spark.sql.execution.adaptive
 
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
-import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ShuffleExchangeExec}
+import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ShuffleExchangeExec, ShuffleExchangeExecLike}
 import org.apache.spark.sql.execution.joins.{BroadcastHashJoinExec, BuildLeft, BuildRight, BuildSide}
 import org.apache.spark.sql.internal.SQLConf
 
@@ -50,7 +50,7 @@ case class OptimizeLocalShuffleReader(conf: SQLConf) extends Rule[SparkPlan] {
     }
 
     val numShuffles = ensureRequirements.apply(optimizedPlan).collect {
-      case e: ShuffleExchangeExec => e
+      case e: ShuffleExchangeExecLike => e
     }.length
 
     // Check whether additional shuffle introduced. If introduced, revert the local reader.
@@ -65,7 +65,8 @@ case class OptimizeLocalShuffleReader(conf: SQLConf) extends Rule[SparkPlan] {
 
   private def createLocalReader(plan: SparkPlan): CustomShuffleReaderExec = {
     plan match {
-      case c @ CustomShuffleReaderExec(s: ShuffleQueryStageExec, _, _) =>
+      case c: CustomShuffleReaderExecLike if c.child.isInstanceOf[ShuffleQueryStageExec] =>
+        val s = c.child.asInstanceOf[ShuffleQueryStageExec]
         CustomShuffleReaderExec(
           s, getPartitionSpecs(s, Some(c.partitionSpecs.length)), LOCAL_SHUFFLE_READER_DESCRIPTION)
       case s: ShuffleQueryStageExec =>

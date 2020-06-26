@@ -106,7 +106,11 @@ case class AdaptiveSparkPlanExec(
   )
 
   private def reOptimizationRules: Seq[Rule[SparkPlan]] = Seq(
+    // logical plan re-optimization may have inserted row-based BHJ
+    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules),
+    // insert row-based exchanges
     ensureRequirements,
+    // convert exchanges to columnar where possible
     ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
   )
 
@@ -137,35 +141,6 @@ case class AdaptiveSparkPlanExec(
   override def output: Seq[Attribute] = initialPlan.output
 
   override def doCanonicalize(): SparkPlan = initialPlan.canonicalized
-
-  def dumpQueryPlan(name: String, plan: SparkPlan): Unit = {
-
-    def sanitize(tree: String): String = {
-      tree.split("\n").map { line =>
-//        println(line)
-        val i = line.indexWhere(ch => ch >= 'A' && ch <= 'Z')
-        var j = line.indexWhere(ch => ch == ' ' || ch == '(', i)
-        if (j < 0) j = line.length
-        val prefix = line.substring(0, i)
-        val operator = line.substring(i, j)
-        val cssClass = operator match {
-          case op if op.startsWith("Gpu") && op.contains("Exchange") => "gpu_exchange"
-          case op if op.startsWith("Gpu") => "gpu"
-          case op if op.contains("Exchange") => "exchange"
-          case op if op.contains("QueryStage") => "querystage"
-          case _ => "default"
-        }
-        prefix + s"""<span class="$cssClass">$operator</span>"""
-      }.mkString("\n")
-    }
-
-    // scalastyle:off println
-    println(s"<tr><td>$name</td></tr>")
-    println("<tr><td><pre>")
-    println(sanitize(plan.treeString(false, false, 0)))
-    println("</pre></td></tr>")
-    // scalastyle:on println
-  }
 
   override def resetMetrics(): Unit = {
     metrics.valuesIterator.foreach(_.reset())
@@ -266,7 +241,7 @@ case class AdaptiveSparkPlanExec(
       isFinalPlan = true
       executionId.foreach(onUpdatePlan(_, Seq(currentPhysicalPlan)))
 
-      dumpQueryPlan("FINAL PLAN", currentPhysicalPlan)
+      currentPhysicalPlan.dumpQueryPlan("FINAL PLAN")
       currentPhysicalPlan
     }
   }
@@ -404,11 +379,27 @@ case class AdaptiveSparkPlanExec(
       if (plan.children.isEmpty) {
         CreateStageResult(newPlan = plan, allChildStagesMaterialized = true, newStages = Seq.empty)
       } else {
-        val results = plan.children.map(createQueryStages)
+        //TODO how do we handle case where plan is a BroadcastHashJoin and the left and right
+        // are mixed CPU/GPU workloads? currently blows up .. fails to bind references
+        val results: Seq[CreateStageResult] = plan.children.map(createQueryStages)
+
+        val resultsWithTransitions: Seq[CreateStageResult] = if (!plan.supportsColumnar) {
+          // we may need some transitions
+          val transitions = ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
+          results.map {
+            case plan if plan.newPlan.supportsColumnar =>
+              plan.copy(newPlan = transitions.apply(plan.newPlan))
+            case plan =>
+              plan
+          }
+        } else {
+          results
+        }
+
         CreateStageResult(
-          newPlan = plan.withNewChildren(results.map(_.newPlan)),
-          allChildStagesMaterialized = results.forall(_.allChildStagesMaterialized),
-          newStages = results.flatMap(_.newStages))
+          newPlan = plan.withNewChildren(resultsWithTransitions.map(_.newPlan)),
+          allChildStagesMaterialized = resultsWithTransitions.forall(_.allChildStagesMaterialized),
+          newStages = resultsWithTransitions.flatMap(_.newStages))
       }
   }
 
@@ -422,7 +413,7 @@ case class AdaptiveSparkPlanExec(
     }
     currentStageId += 1
     setLogicalLinkForNewQueryStage(queryStage, e)
-    dumpQueryPlan(s"New Query Stage ${currentStageId}", queryStage)
+    queryStage.dumpQueryPlan(s"New Query Stage ${currentStageId}")
     queryStage
   }
 
@@ -520,9 +511,12 @@ case class AdaptiveSparkPlanExec(
    * Re-optimize and run physical planning on the current logical plan based on the latest stats.
    */
   private def reOptimize(logicalPlan: LogicalPlan): (SparkPlan, LogicalPlan) = {
+    println(s"reOptimize:\n${logicalPlan}")
     logicalPlan.invalidateStatsCache()
     val optimized = optimizer.execute(logicalPlan)
-    val sparkPlan = context.session.sessionState.planner.plan(ReturnAnswer(optimized)).next()
+    println(s"reOptimize; optimized:\n${logicalPlan}")
+    val plans = context.session.sessionState.planner.plan(ReturnAnswer(optimized))
+    val sparkPlan = plans.next()
     val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ reOptimizationRules)
     (newPlan, optimized)
   }
@@ -620,7 +614,11 @@ object AdaptiveSparkPlanExec {
    * Apply a list of physical operator rules on a [[SparkPlan]].
    */
   def applyPhysicalRules(plan: SparkPlan, rules: Seq[Rule[SparkPlan]]): SparkPlan = {
-    rules.foldLeft(plan) { case (sp, rule) => rule.apply(sp) }
+    rules.foldLeft(plan) {
+      case (sp, rule) =>
+      println(s"applying rule ${rule}")
+        rule.apply(sp)
+    }
   }
 }
 

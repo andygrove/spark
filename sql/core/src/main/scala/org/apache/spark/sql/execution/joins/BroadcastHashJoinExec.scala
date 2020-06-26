@@ -46,6 +46,11 @@ case class BroadcastHashJoinExec(
     right: SparkPlan)
   extends BinaryExecNode with HashJoin with CodegenSupport {
 
+//  assert(left.supportsColumnar == right.supportsColumnar)
+
+  println(s"new BroadcastHashJoinExec($leftKeys == $rightKeys, " +
+      s"${left.getClass} == ${right.getClass})")
+
   override lazy val metrics = Map(
     "numOutputRows" -> SQLMetrics.createMetric(sparkContext, "number of output rows"))
 

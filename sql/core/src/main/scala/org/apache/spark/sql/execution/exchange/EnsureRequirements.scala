@@ -43,6 +43,9 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
     }
 
   private def ensureDistributionAndOrdering(operator: SparkPlan): SparkPlan = {
+    println(s"ensureDistributionAndOrdering:\n${operator}")
+
+
     val requiredChildDistributions: Seq[Distribution] = operator.requiredChildDistribution
     val requiredChildOrderings: Seq[Seq[SortOrder]] = operator.requiredChildOrdering
     var children: Seq[SparkPlan] = operator.children
@@ -88,7 +91,7 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
       // 1. We should avoid shuffling these children.
       // 2. We should have a reasonable parallelism.
       val nonShuffleChildrenNumPartitions =
-        childrenIndexes.map(children).filterNot(_.isInstanceOf[ShuffleExchangeExec])
+        childrenIndexes.map(children).filterNot(_.isInstanceOf[ShuffleExchangeExecLike])
           .map(_.outputPartitioning.numPartitions)
       val expectedChildrenNumPartitions = if (nonShuffleChildrenNumPartitions.nonEmpty) {
         // Here we pick the max number of partitions among these non-shuffle children as the
@@ -110,7 +113,8 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
             val defaultPartitioning = distribution.createPartitioning(targetNumPartitions)
             child match {
               // If child is an exchange, we replace it with a new one having defaultPartitioning.
-              case ShuffleExchangeExec(_, c, _) => ShuffleExchangeExec(defaultPartitioning, c)
+              case s: ShuffleExchangeExecLike =>
+                ShuffleExchangeExec(defaultPartitioning, s.child)
               case _ => ShuffleExchangeExec(defaultPartitioning, child)
             }
           }
@@ -198,6 +202,7 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
    * partitioning of the join nodes' children.
    */
   private def reorderJoinPredicates(plan: SparkPlan): SparkPlan = {
+    //TODO will not recognize plugin versions of these operators
     plan match {
       case ShuffledHashJoinExec(leftKeys, rightKeys, joinType, buildSide, condition, left, right) =>
         val (reorderedLeftKeys, reorderedRightKeys) =
@@ -217,10 +222,14 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
 
   def apply(plan: SparkPlan): SparkPlan = plan.transformUp {
     // TODO: remove this after we create a physical operator for `RepartitionByExpression`.
-    case operator @ ShuffleExchangeExec(upper: HashPartitioning, child, _) =>
-      child.outputPartitioning match {
-        case lower: HashPartitioning if upper.semanticEquals(lower) => child
-        case _ => operator
+    case operator: ShuffleExchangeExecLike =>
+      operator.outputPartitioning match {
+        case upper: HashPartitioning => operator.child.outputPartitioning match {
+          case lower: HashPartitioning if upper.semanticEquals(lower) => operator.child
+          case _ => operator
+        }
+        case _ =>
+          ensureDistributionAndOrdering(reorderJoinPredicates(operator))
       }
     case operator: SparkPlan =>
       ensureDistributionAndOrdering(reorderJoinPredicates(operator))

@@ -25,6 +25,8 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange.{ReusedExchangeExec, ShuffleExchangeExec}
 
 trait CustomShuffleReaderExecLike {
+  def child: SparkPlan
+  def partitionSpecs: Seq[ShufflePartitionSpec]
 }
 
 /**

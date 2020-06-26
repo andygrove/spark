@@ -49,6 +49,7 @@ trait ShuffleExchangeExecLike {
   def shuffleDependency : ShuffleDependency[Int, InternalRow, InternalRow]
   def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
   def readMetrics: Map[String, SQLMetric]
+  def child: SparkPlan
 }
 
 /**
