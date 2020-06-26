@@ -142,11 +142,13 @@ case class ShuffleQueryStageExec(
     override val plan: SparkPlan) extends QueryStageExec {
 
   @transient val shuffle = plan match {
-    case s: ShuffleExchangeExec => s
-    case ReusedExchangeExec(_, s: ShuffleExchangeExec) => s
+    case s: ShuffleExchangeExecLike => s
+    case ReusedExchangeExec(_, s: ShuffleExchangeExecLike) => s
     case _ =>
       throw new IllegalStateException("wrong plan for shuffle stage:\n " + plan.treeString)
   }
+
+  override def supportsColumnar: Boolean = shuffle.supportsColumnar
 
   override def doMaterialize(): Future[Any] = attachTree(this, "execute") {
     shuffle.mapOutputStatisticsFuture
@@ -155,7 +157,7 @@ case class ShuffleQueryStageExec(
   override def newReuseInstance(newStageId: Int, newOutput: Seq[Attribute]): QueryStageExec = {
     ShuffleQueryStageExec(
       newStageId,
-      ReusedExchangeExec(newOutput, shuffle))
+      ReusedExchangeExec(newOutput, shuffle.asExchange))
   }
 
   override def cancel(): Unit = {
@@ -184,7 +186,6 @@ case class ShuffleQueryStageExec(
 case class BroadcastQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
-
 
   /**
    * Return true if this stage of the plan supports columnar execution.

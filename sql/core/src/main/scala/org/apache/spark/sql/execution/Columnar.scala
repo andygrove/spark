@@ -517,10 +517,18 @@ case class ApplyColumnarRulesAndInsertTransitions(
   }
 
   def apply(plan: SparkPlan): SparkPlan = {
+    // scalastyle:off println
+    println(s"ApplyColumnarRulesAndInsertTransitions: plan=\n$plan")
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r : ColumnarRule) =>
       preInsertPlan = r.preColumnarTransitions(preInsertPlan))
+
+    println(s"ApplyColumnarRulesAndInsertTransitions: preInsertPlan=\n$preInsertPlan")
+
     var postInsertPlan = insertTransitions(preInsertPlan)
+
+    println(s"ApplyColumnarRulesAndInsertTransitions: postInsertPlan=\n$postInsertPlan")
+    // scalastyle:on println
     columnarRules.reverse.foreach((r : ColumnarRule) =>
       postInsertPlan = r.postColumnarTransitions(postInsertPlan))
     postInsertPlan

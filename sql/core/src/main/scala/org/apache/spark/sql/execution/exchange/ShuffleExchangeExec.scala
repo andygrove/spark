@@ -23,6 +23,7 @@ import java.util.function.Supplier
 import scala.concurrent.Future
 
 import org.apache.spark._
+
 import org.apache.spark.internal.config
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
@@ -37,10 +38,17 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics, SQLShuffleReadMetricsReporter, SQLShuffleWriteMetricsReporter}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
 
 trait ShuffleExchangeExecLike {
+  def mapOutputStatisticsFuture: Future[MapOutputStatistics]
+  def asExchange(): Exchange
+  def canChangeNumPartitions: Boolean
+  def shuffleDependency : ShuffleDependency[Int, InternalRow, InternalRow]
+  def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
+  def readMetrics: Map[String, SQLMetric]
 }
 
 /**
@@ -51,16 +59,17 @@ case class ShuffleExchangeExec(
     child: SparkPlan,
     canChangeNumPartitions: Boolean = true) extends Exchange with ShuffleExchangeExecLike {
 
-
   private lazy val writeMetrics =
     SQLShuffleWriteMetricsReporter.createShuffleWriteMetrics(sparkContext)
-  private[sql] lazy val readMetrics =
+  /*private[sql]*/ lazy val readMetrics =
     SQLShuffleReadMetricsReporter.createShuffleReadMetrics(sparkContext)
   override lazy val metrics = Map(
     "dataSize" -> SQLMetrics.createSizeMetric(sparkContext, "data size")
   ) ++ readMetrics ++ writeMetrics
 
   override def nodeName: String = "Exchange"
+
+  override def asExchange(): Exchange = this
 
   private val serializer: Serializer =
     new UnsafeRowSerializer(child.output.size, longMetric("dataSize"))
@@ -72,7 +81,11 @@ case class ShuffleExchangeExec(
     if (inputRDD.getNumPartitions == 0) {
       Future.successful(null)
     } else {
-      sparkContext.submitMapStage(shuffleDependency)
+      if (child.supportsColumnar) {
+        sparkContext.submitMapStage(shuffleDependencyColumnar)
+      } else {
+        sparkContext.submitMapStage(shuffleDependency)
+      }
     }
   }
 
@@ -90,6 +103,9 @@ case class ShuffleExchangeExec(
       serializer,
       writeMetrics)
   }
+
+  override def shuffleDependencyColumnar: ShuffleDependency[Int, ColumnarBatch, ColumnarBatch] =
+    throw new IllegalStateException()
 
   /**
    * Caches the created ShuffleRowRDD so we can reuse that.
