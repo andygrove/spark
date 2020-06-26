@@ -105,6 +105,10 @@ case class AdaptiveSparkPlanExec(
     CollapseCodegenStages(conf)
   )
 
+//  private def reOptimizationRules: Seq[Rule[SparkPlan]] = Seq(
+//    ensureRequirements
+//  )
+
   private def reOptimizationRules: Seq[Rule[SparkPlan]] = Seq(
     // logical plan re-optimization may have inserted row-based BHJ
     ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules),
@@ -228,6 +232,7 @@ case class AdaptiveSparkPlanExec(
             (newCost == origCost && currentPhysicalPlan != newPhysicalPlan)) {
           logOnLevel(s"Plan changed from $currentPhysicalPlan to $newPhysicalPlan")
           cleanUpTempTags(newPhysicalPlan)
+          setTempTagRecursive(newPhysicalPlan, newLogicalPlan)
           currentPhysicalPlan = newPhysicalPlan
           currentLogicalPlan = newLogicalPlan
           stagesToReplace = Seq.empty[QueryStageExec]
@@ -437,6 +442,7 @@ case class AdaptiveSparkPlanExec(
           p.getTagValue(TEMP_LOGICAL_PLAN_TAG).get
         case p if p.logicalLink.isDefined => p.logicalLink.get
       }))
+    println(s"setLogicalLinkForNewQueryStage; link=${link}")
     assert(link.isDefined)
     stage.setLogicalLink(link.get)
   }

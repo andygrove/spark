@@ -49,6 +49,8 @@ class ColumnarRule {
   def postColumnarTransitions: Rule[SparkPlan] = plan => plan
 }
 
+trait ColumnarToRowExecLike
+
 /**
  * Provides a common executor to translate an [[RDD]] of [[ColumnarBatch]] into an [[RDD]] of
  * [[InternalRow]]. This is inserted whenever such a transition is determined to be needed.
@@ -57,7 +59,8 @@ class ColumnarRule {
  * [[org.apache.spark.sql.execution.python.ArrowEvalPythonExec]] and
  * [[MapPartitionsInRWithArrowExec]]. Eventually this should replace those implementations.
  */
-case class ColumnarToRowExec(child: SparkPlan) extends UnaryExecNode with CodegenSupport {
+case class ColumnarToRowExec(child: SparkPlan) extends UnaryExecNode
+    with CodegenSupport with ColumnarToRowExecLike {
   assert(child.supportsColumnar)
 
   override def output: Seq[Attribute] = child.output
@@ -385,6 +388,8 @@ private object RowToColumnConverter {
   }
 }
 
+trait RowToColumnarExecLike
+
 /**
  * Provides a common executor to translate an [[RDD]] of [[InternalRow]] into an [[RDD]] of
  * [[ColumnarBatch]]. This is inserted whenever such a transition is determined to be needed.
@@ -402,7 +407,7 @@ private object RowToColumnConverter {
  * populate with [[RowToColumnConverter]], but the performance requirements are different and it
  * would only be to reduce code.
  */
-case class RowToColumnarExec(child: SparkPlan) extends UnaryExecNode {
+case class RowToColumnarExec(child: SparkPlan) extends UnaryExecNode with RowToColumnarExecLike {
   override def output: Seq[Attribute] = child.output
 
   override def outputPartitioning: Partitioning = child.outputPartitioning
@@ -489,12 +494,17 @@ case class ApplyColumnarRulesAndInsertTransitions(
    * Inserts an transition to columnar formatted data.
    */
   private def insertRowToColumnar(plan: SparkPlan): SparkPlan = {
-    if (!plan.supportsColumnar) {
+    if (!plan.supportsColumnar && !plan.isInstanceOf[RowToColumnarExecLike]) {
       // The tree feels kind of backwards
       // Columnar Processing will start here, so transition from row to columnar
       RowToColumnarExec(insertTransitions(plan))
     } else {
-      plan.withNewChildren(plan.children.map(insertRowToColumnar))
+      if (plan.isInstanceOf[RowToColumnarExecLike]) {
+        // hack to prevent double nesting of row to column
+        plan
+      } else {
+        plan.withNewChildren(plan.children.map(insertRowToColumnar))
+      }
     }
   }
 
@@ -512,7 +522,12 @@ case class ApplyColumnarRulesAndInsertTransitions(
         columnar
       }
     } else {
-      plan.withNewChildren(plan.children.map(insertTransitions))
+      if (plan.isInstanceOf[ColumnarToRowExecLike]) {
+        // hack to prevent double nesting of column to row
+        plan
+      } else {
+        plan.withNewChildren(plan.children.map(insertTransitions))
+      }
     }
   }
 
