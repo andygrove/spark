@@ -479,7 +479,10 @@ case class RowToColumnarExec(child: SparkPlan) extends UnaryExecNode {
  * Apply any user defined [[ColumnarRule]]s and find the correct place to insert transitions
  * to/from columnar formatted data.
  */
-case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: Seq[ColumnarRule])
+case class ApplyColumnarRulesAndInsertTransitions(
+    conf: SQLConf,
+    columnarRules: Seq[ColumnarRule],
+    convertToRows: Boolean = true)
   extends Rule[SparkPlan] {
 
   /**
@@ -502,7 +505,12 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
     if (plan.supportsColumnar) {
       // The tree feels kind of backwards
       // This is the end of the columnar processing so go back to rows
-      ColumnarToRowExec(insertRowToColumnar(plan))
+      val columnar = insertRowToColumnar(plan)
+      if (convertToRows) {
+        ColumnarToRowExec(columnar)
+      } else {
+        columnar
+      }
     } else {
       plan.withNewChildren(plan.children.map(insertTransitions))
     }

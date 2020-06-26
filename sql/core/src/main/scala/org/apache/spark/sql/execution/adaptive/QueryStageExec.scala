@@ -185,9 +185,15 @@ case class BroadcastQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
 
+
+  /**
+   * Return true if this stage of the plan supports columnar execution.
+   */
+  override def supportsColumnar: Boolean = plan.supportsColumnar
+
   @transient val broadcast = plan match {
-    case b: BroadcastExchangeExec => b
-    case ReusedExchangeExec(_, b: BroadcastExchangeExec) => b
+    case b: BroadcastExchangeExecLike => b
+    case ReusedExchangeExec(_, b: BroadcastExchangeExecLike) => b
     case _ =>
       throw new IllegalStateException("wrong plan for broadcast stage:\n " + plan.treeString)
   }
@@ -215,14 +221,14 @@ case class BroadcastQueryStageExec(
   override def newReuseInstance(newStageId: Int, newOutput: Seq[Attribute]): QueryStageExec = {
     BroadcastQueryStageExec(
       newStageId,
-      ReusedExchangeExec(newOutput, broadcast))
+      ReusedExchangeExec(newOutput, broadcast.asExchange()))
   }
 
   override def cancel(): Unit = {
-    if (!broadcast.relationFuture.isDone) {
-      sparkContext.cancelJobGroup(broadcast.runId.toString)
-      broadcast.relationFuture.cancel(true)
-    }
+//    if (!broadcast.relationFuture.isDone) {
+//      sparkContext.cancelJobGroup(broadcast.runId.toString)
+//      broadcast.relationFuture.cancel(true)
+//    }
   }
 }
 

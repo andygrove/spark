@@ -37,14 +37,23 @@ import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
 import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.util.{SparkFatalException, ThreadUtils}
 
+trait BroadcastExchangeExecLike {
+  def completionFuture: scala.concurrent.Future[broadcast.Broadcast[Any]]
+  def asExchange(): Exchange
+}
+
 /**
  * A [[BroadcastExchangeExec]] collects, transforms and finally broadcasts the result of
  * a transformed SparkPlan.
  */
 case class BroadcastExchangeExec(
     mode: BroadcastMode,
-    child: SparkPlan) extends Exchange {
+    child: SparkPlan) extends Exchange with BroadcastExchangeExecLike {
   import BroadcastExchangeExec._
+
+  override def asExchange(): Exchange = this
+
+  override def supportsColumnar: Boolean = child.supportsColumnar
 
   private[sql] val runId: UUID = UUID.randomUUID
 

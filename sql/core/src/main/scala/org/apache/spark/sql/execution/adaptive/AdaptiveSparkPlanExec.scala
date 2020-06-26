@@ -101,8 +101,13 @@ case class AdaptiveSparkPlanExec(
     // added by `CoalesceShufflePartitions`. So they must be executed after it.
     OptimizeSkewedJoin(conf),
     OptimizeLocalShuffleReader(conf),
-    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules),
+    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules, false),
     CollapseCodegenStages(conf)
+  )
+
+  private def reOptimizationRules: Seq[Rule[SparkPlan]] = Seq(
+    ensureRequirements,
+    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
   )
 
   @transient private val costEvaluator = SimpleCostEvaluator
@@ -132,6 +137,35 @@ case class AdaptiveSparkPlanExec(
   override def output: Seq[Attribute] = initialPlan.output
 
   override def doCanonicalize(): SparkPlan = initialPlan.canonicalized
+
+  def dumpQueryPlan(name: String, plan: SparkPlan): Unit = {
+
+    def sanitize(tree: String): String = {
+      tree.split("\n").map { line =>
+//        println(line)
+        val i = line.indexWhere(ch => ch >= 'A' && ch <= 'Z')
+        var j = line.indexWhere(ch => ch == ' ' || ch == '(', i)
+        if (j < 0) j = line.length
+        val prefix = line.substring(0, i)
+        val operator = line.substring(i, j)
+        val cssClass = operator match {
+          case op if op.startsWith("Gpu") && op.contains("Exchange") => "gpu_exchange"
+          case op if op.startsWith("Gpu") => "gpu"
+          case op if op.contains("Exchange") => "exchange"
+          case op if op.contains("QueryStage") => "querystage"
+          case _ => "default"
+        }
+        prefix + s"""<span class="$cssClass">$operator</span>"""
+      }.mkString("\n")
+    }
+
+    // scalastyle:off println
+    println(s"<tr><td>$name</td></tr>")
+    println("<tr><td><pre>")
+    println(sanitize(plan.treeString(false, false, 0)))
+    println("</pre></td></tr>")
+    // scalastyle:on println
+  }
 
   override def resetMetrics(): Unit = {
     metrics.valuesIterator.foreach(_.reset())
@@ -189,6 +223,7 @@ case class AdaptiveSparkPlanExec(
         events.drainTo(rem)
         (Seq(nextMsg) ++ rem.asScala).foreach {
           case StageSuccess(stage, res) =>
+            println(s"SUCCESS: ${stage}")
             stage.resultOption = Some(res)
           case StageFailure(stage, ex) =>
             errors.append(ex)
@@ -230,9 +265,14 @@ case class AdaptiveSparkPlanExec(
       currentPhysicalPlan = applyPhysicalRules(result.newPlan, queryStageOptimizerRules)
       isFinalPlan = true
       executionId.foreach(onUpdatePlan(_, Seq(currentPhysicalPlan)))
+
+      dumpQueryPlan("FINAL PLAN", currentPhysicalPlan)
       currentPhysicalPlan
     }
   }
+
+
+  //         dumpQueryPlan("currentPhysicalPlan", currentPhysicalPlan)
 
   // Use a lazy val to avoid this being called more than once.
   @transient private lazy val finalPlanUpdate: Unit = {
@@ -373,15 +413,16 @@ case class AdaptiveSparkPlanExec(
   }
 
   private def newQueryStage(e: Exchange): QueryStageExec = {
-    val optimizedPlan = applyPhysicalRules(e.child, queryStageOptimizerRules)
-    val queryStage = e match {
-      case s: ShuffleExchangeExec =>
-        ShuffleQueryStageExec(currentStageId, s.copy(child = optimizedPlan))
-      case b: BroadcastExchangeExec =>
-        BroadcastQueryStageExec(currentStageId, b.copy(child = optimizedPlan))
+    val optimizedPlan = applyPhysicalRules(e, queryStageOptimizerRules)
+    val queryStage = optimizedPlan match {
+      case _: ShuffleExchangeExecLike =>
+        ShuffleQueryStageExec(currentStageId, optimizedPlan)
+      case _: BroadcastExchangeExecLike =>
+        BroadcastQueryStageExec(currentStageId, optimizedPlan)
     }
     currentStageId += 1
     setLogicalLinkForNewQueryStage(queryStage, e)
+    dumpQueryPlan(s"New Query Stage ${currentStageId}", queryStage)
     queryStage
   }
 
@@ -482,10 +523,11 @@ case class AdaptiveSparkPlanExec(
     logicalPlan.invalidateStatsCache()
     val optimized = optimizer.execute(logicalPlan)
     val sparkPlan = context.session.sessionState.planner.plan(ReturnAnswer(optimized)).next()
-    val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ queryStagePreparationRules)
+    val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ reOptimizationRules)
     (newPlan, optimized)
   }
 
+  //     dumpQueryPlan("Re-optimized plan", newPlan)
   /**
    * Recursively set `TEMP_LOGICAL_PLAN_TAG` for the current `plan` node.
    */
