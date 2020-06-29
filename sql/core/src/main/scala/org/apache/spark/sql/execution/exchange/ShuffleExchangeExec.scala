@@ -60,6 +60,8 @@ case class ShuffleExchangeExec(
     child: SparkPlan,
     canChangeNumPartitions: Boolean = true) extends Exchange with ShuffleExchangeExecLike {
 
+  //assert(!child.supportsColumnar)
+
   private lazy val writeMetrics =
     SQLShuffleWriteMetricsReporter.createShuffleWriteMetrics(sparkContext)
   /*private[sql]*/ lazy val readMetrics =
@@ -82,11 +84,11 @@ case class ShuffleExchangeExec(
     if (inputRDD.getNumPartitions == 0) {
       Future.successful(null)
     } else {
-      if (child.supportsColumnar) {
-        sparkContext.submitMapStage(shuffleDependencyColumnar)
-      } else {
+//      if (child.supportsColumnar) {
+//        sparkContext.submitMapStage(shuffleDependencyColumnar)
+//      } else {
         sparkContext.submitMapStage(shuffleDependency)
-      }
+//      }
     }
   }
 

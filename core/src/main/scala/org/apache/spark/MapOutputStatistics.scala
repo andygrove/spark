@@ -24,4 +24,4 @@ package org.apache.spark
  * @param bytesByPartitionId approximate number of output bytes for each map output partition
  *   (may be inexact due to use of compressed map statuses)
  */
-private[spark] class MapOutputStatistics(val shuffleId: Int, val bytesByPartitionId: Array[Long])
+class MapOutputStatistics(val shuffleId: Int, val bytesByPartitionId: Array[Long])

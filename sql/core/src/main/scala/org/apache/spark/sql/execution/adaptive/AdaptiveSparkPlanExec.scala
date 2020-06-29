@@ -393,7 +393,8 @@ case class AdaptiveSparkPlanExec(
 
         val resultsWithTransitions: Seq[CreateStageResult] = if (!plan.supportsColumnar) {
           // we may need some transitions
-          val transitions = ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules)
+          val transitions = ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules,
+            convertToRows = false)
           results.map {
             case plan if plan.newPlan.supportsColumnar =>
               plan.copy(newPlan = transitions.apply(plan.newPlan))

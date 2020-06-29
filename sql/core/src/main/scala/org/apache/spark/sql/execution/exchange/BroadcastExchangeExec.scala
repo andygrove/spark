@@ -53,8 +53,6 @@ case class BroadcastExchangeExec(
 
   override def asExchange(): Exchange = this
 
-  override def supportsColumnar: Boolean = child.supportsColumnar
-
   private[sql] val runId: UUID = UUID.randomUUID
 
   override lazy val metrics = Map(

@@ -72,9 +72,8 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
         val prefix = line.substring(0, i)
         val operator = line.substring(i, j)
         val cssClass = operator match {
-          case op if op.startsWith("Gpu") && op.contains("Exchange") => "gpu_exchange"
+          case op if op.contains("RowToColumnar") || op.contains("ColumnarToRow") => "transition"
           case op if op.startsWith("Gpu") => "gpu"
-          case op if op.contains("Exchange") => "exchange"
           case op if op.contains("QueryStage") => "querystage"
           case _ => "default"
         }
