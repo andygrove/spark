@@ -159,6 +159,8 @@ case class AdaptiveSparkPlanExec(
   private def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
     if (isFinalPlan) return currentPhysicalPlan
 
+    currentPhysicalPlan.dumpQueryPlan("Initial physical plan")
+
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
     // `plan.queryExecution.rdd`, we need to set active session here as new plan nodes can be
     // created in the middle of the execution.
@@ -200,7 +202,7 @@ case class AdaptiveSparkPlanExec(
         events.drainTo(rem)
         (Seq(nextMsg) ++ rem.asScala).foreach {
           case StageSuccess(stage, res) =>
-            println(s"SUCCESS: ${stage}")
+            //println(s"SUCCESS: ${stage}")
             stage.resultOption = Some(res)
           case StageFailure(stage, ex) =>
             errors.append(ex)
@@ -483,7 +485,7 @@ case class AdaptiveSparkPlanExec(
   private def replaceWithQueryStagesInLogicalPlan(
       plan: LogicalPlan,
       stagesToReplace: Seq[QueryStageExec]): LogicalPlan = {
-    var logicalPlan = plan
+    var logicalPlan: LogicalPlan = plan
     stagesToReplace.foreach {
       case stage if currentPhysicalPlan.find(_.eq(stage)).isDefined =>
         val logicalNodeOpt = stage.getTagValue(TEMP_LOGICAL_PLAN_TAG).orElse(stage.logicalLink)
@@ -504,6 +506,8 @@ case class AdaptiveSparkPlanExec(
         val newLogicalPlan = logicalPlan.transformDown {
           case p if p.eq(logicalNode) => newLogicalNode
         }
+        newLogicalPlan.dumpQueryPlan("newLogicalPlan")
+
         assert(newLogicalPlan != logicalPlan,
           s"logicalNode: $logicalNode; " +
             s"logicalPlan: $logicalPlan " +
@@ -520,12 +524,15 @@ case class AdaptiveSparkPlanExec(
    * Re-optimize and run physical planning on the current logical plan based on the latest stats.
    */
   private def reOptimize(logicalPlan: LogicalPlan): (SparkPlan, LogicalPlan) = {
-    println(s"reOptimize:\n${logicalPlan}")
+    //println(s"reOptimize:\n${logicalPlan}")
     logicalPlan.invalidateStatsCache()
     val optimized = optimizer.execute(logicalPlan)
-    println(s"reOptimize; optimized:\n${logicalPlan}")
+    optimized.dumpQueryPlan("re-optimized logical plan")
+    //println(s"reOptimize; optimized:\n${logicalPlan}")
     val sparkPlan = context.session.sessionState.planner.plan(ReturnAnswer(optimized)).next()
+    sparkPlan.dumpQueryPlan("new physical plan")
     val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ reOptimizationRules)
+    newPlan.dumpQueryPlan("optimized physical plan")
     (newPlan, optimized)
   }
 
@@ -624,7 +631,7 @@ object AdaptiveSparkPlanExec {
   def applyPhysicalRules(plan: SparkPlan, rules: Seq[Rule[SparkPlan]]): SparkPlan = {
     rules.foldLeft(plan) {
       case (sp, rule) =>
-        println(s"applying rule ${rule}")
+//        println(s"applying rule ${rule}")
         rule.apply(sp)
     }
   }

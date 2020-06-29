@@ -569,6 +569,38 @@ abstract class TreeNode[BaseType <: TreeNode[BaseType]] extends Product {
 
   override def toString: String = treeString
 
+  /**
+   * Debug logging to generate color-coded summarized plans in HTML format for documentation
+   * about this PoC.
+   */
+  def dumpQueryPlan(name: String): Unit = {
+
+    def sanitize(tree: String): String = {
+      tree.split("\n").map { line =>
+        //        println(line)
+        val i = line.indexWhere(ch => ch >= 'A' && ch <= 'Z')
+        var j = line.indexWhere(ch => ch == ' ' || ch == '(', i)
+        if (j < 0) j = line.length
+        val prefix = line.substring(0, i)
+        val operator = line.substring(i, j)
+        val cssClass = operator match {
+          case op if op.contains("RowToColumnar") || op.contains("ColumnarToRow") => "transition"
+          case op if op.startsWith("Gpu") => "gpu"
+          case op if op.contains("QueryStage") => "querystage"
+          case _ => "default"
+        }
+        prefix + s"""<span class="$cssClass">$operator</span>"""
+      }.mkString("\n")
+    }
+
+    // scalastyle:off println
+    println(s"<tr><td>$name</td></tr>")
+    println("<tr><td><pre>")
+    println(sanitize(treeString(false, false, 0)))
+    println("</pre></td></tr>")
+    // scalastyle:on println
+  }
+
   /** Returns a string representation of the nodes in this tree */
   final def treeString: String = treeString(verbose = true)
 

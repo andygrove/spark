@@ -61,7 +61,10 @@ trait ColumnarToRowExecLike
  */
 case class ColumnarToRowExec(child: SparkPlan) extends UnaryExecNode
     with CodegenSupport with ColumnarToRowExecLike {
-  assert(child.supportsColumnar)
+
+  if (!child.supportsColumnar) {
+    assert(false)
+  }
 
   override def output: Seq[Attribute] = child.output
 

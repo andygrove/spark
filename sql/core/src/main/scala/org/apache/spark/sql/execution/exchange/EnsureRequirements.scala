@@ -43,9 +43,7 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
     }
 
   private def ensureDistributionAndOrdering(operator: SparkPlan): SparkPlan = {
-    println(s"ensureDistributionAndOrdering:\n${operator}")
-
-
+    //println(s"ensureDistributionAndOrdering:\n${operator}")
     val requiredChildDistributions: Seq[Distribution] = operator.requiredChildDistribution
     val requiredChildOrderings: Seq[Seq[SortOrder]] = operator.requiredChildOrdering
     var children: Seq[SparkPlan] = operator.children
@@ -58,10 +56,13 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
         child
       case (child, BroadcastDistribution(mode)) =>
         BroadcastExchangeExec(mode, child)
+      case (child, UnspecifiedDistribution) =>
+        //TODO ... I don't fully understand why we get UnspecifiedDistribution here when
+        // using the plugin
+        ShuffleExchangeExec(UnknownPartitioning(defaultNumPreShufflePartitions), child)
       case (child, distribution) =>
         val numPartitions = distribution.requiredNumPartitions
           .getOrElse(defaultNumPreShufflePartitions)
-        println("EnsureRequirements inserting ShuffleExchangeExec")
         ShuffleExchangeExec(distribution.createPartitioning(numPartitions), child)
     }
 

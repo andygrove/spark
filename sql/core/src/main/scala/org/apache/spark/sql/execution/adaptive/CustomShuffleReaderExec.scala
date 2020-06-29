@@ -42,6 +42,8 @@ case class CustomShuffleReaderExec private(
     partitionSpecs: Seq[ShufflePartitionSpec],
     description: String) extends UnaryExecNode with CustomShuffleReaderExecLike {
 
+  override def supportsColumnar: Boolean = child.supportsColumnar
+
   override def output: Seq[Attribute] = child.output
   override lazy val outputPartitioning: Partitioning = {
     // If it is a local shuffle reader with one mapper per task, then the output partitioning is
