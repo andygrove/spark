@@ -101,13 +101,11 @@ case class AdaptiveSparkPlanExec(
     // added by `CoalesceShufflePartitions`. So they must be executed after it.
     OptimizeSkewedJoin(conf),
     OptimizeLocalShuffleReader(conf),
-    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules, false),
+    // insert columnar transitions but do not try and force row-based output
+    ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules,
+      convertToRows = false),
     CollapseCodegenStages(conf)
   )
-
-//  private def reOptimizationRules: Seq[Rule[SparkPlan]] = Seq(
-//    ensureRequirements
-//  )
 
   private def reOptimizationRules: Seq[Rule[SparkPlan]] = Seq(
     // logical plan re-optimization may have inserted row-based BHJ
@@ -232,7 +230,12 @@ case class AdaptiveSparkPlanExec(
             (newCost == origCost && currentPhysicalPlan != newPhysicalPlan)) {
           logOnLevel(s"Plan changed from $currentPhysicalPlan to $newPhysicalPlan")
           cleanUpTempTags(newPhysicalPlan)
+
+          // associate the logical plan with the new physical plan .. this should have already
+          // happened in [[replaceWithQueryStagesInLogicalPlan]] but did not and this needs
+          // further investigation.
           setTempTagRecursive(newPhysicalPlan, newLogicalPlan)
+
           currentPhysicalPlan = newPhysicalPlan
           currentLogicalPlan = newLogicalPlan
           stagesToReplace = Seq.empty[QueryStageExec]
@@ -442,7 +445,6 @@ case class AdaptiveSparkPlanExec(
           p.getTagValue(TEMP_LOGICAL_PLAN_TAG).get
         case p if p.logicalLink.isDefined => p.logicalLink.get
       }))
-    println(s"setLogicalLinkForNewQueryStage; link=${link}")
     assert(link.isDefined)
     stage.setLogicalLink(link.get)
   }
@@ -521,8 +523,7 @@ case class AdaptiveSparkPlanExec(
     logicalPlan.invalidateStatsCache()
     val optimized = optimizer.execute(logicalPlan)
     println(s"reOptimize; optimized:\n${logicalPlan}")
-    val plans = context.session.sessionState.planner.plan(ReturnAnswer(optimized))
-    val sparkPlan = plans.next()
+    val sparkPlan = context.session.sessionState.planner.plan(ReturnAnswer(optimized)).next()
     val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ reOptimizationRules)
     (newPlan, optimized)
   }
@@ -622,7 +623,7 @@ object AdaptiveSparkPlanExec {
   def applyPhysicalRules(plan: SparkPlan, rules: Seq[Rule[SparkPlan]]): SparkPlan = {
     rules.foldLeft(plan) {
       case (sp, rule) =>
-      println(s"applying rule ${rule}")
+        println(s"applying rule ${rule}")
         rule.apply(sp)
     }
   }

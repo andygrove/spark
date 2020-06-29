@@ -57,6 +57,10 @@ object SparkPlan {
  */
 abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializable {
 
+  /**
+   * Debug logging to generate color-coded summarized plans in HTML format for documentation
+   * about this PoC.
+   */
   def dumpQueryPlan(name: String): Unit = {
 
     def sanitize(tree: String): String = {

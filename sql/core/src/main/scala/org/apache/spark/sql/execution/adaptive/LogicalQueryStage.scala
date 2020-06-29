@@ -37,8 +37,6 @@ case class LogicalQueryStage(
     logicalPlan: LogicalPlan,
     physicalPlan: SparkPlan) extends LeafNode {
 
-  println()
-
   override def output: Seq[Attribute] = logicalPlan.output
   override val isStreaming: Boolean = logicalPlan.isStreaming
   override val outputOrdering: Seq[SortOrder] = physicalPlan.outputOrdering
