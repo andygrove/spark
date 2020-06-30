@@ -43,7 +43,7 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
     }
 
   private def ensureDistributionAndOrdering(operator: SparkPlan): SparkPlan = {
-    //println(s"ensureDistributionAndOrdering:\n${operator}")
+    // println(s"ensureDistributionAndOrdering:\n${operator}")
     val requiredChildDistributions: Seq[Distribution] = operator.requiredChildDistribution
     val requiredChildOrderings: Seq[Seq[SortOrder]] = operator.requiredChildOrdering
     var children: Seq[SparkPlan] = operator.children
@@ -56,10 +56,10 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
         child
       case (child, BroadcastDistribution(mode)) =>
         BroadcastExchangeExec(mode, child)
-      case (child, UnspecifiedDistribution) =>
-        //TODO ... I don't fully understand why we get UnspecifiedDistribution here when
-        // using the plugin
-        ShuffleExchangeExec(UnknownPartitioning(defaultNumPreShufflePartitions), child)
+//      case (child, UnspecifiedDistribution) =>
+//        // TODO ... I don't fully understand why we get UnspecifiedDistribution here when
+//        // using the plugin
+//        ShuffleExchangeExec(UnknownPartitioning(defaultNumPreShufflePartitions), child)
       case (child, distribution) =>
         val numPartitions = distribution.requiredNumPartitions
           .getOrElse(defaultNumPreShufflePartitions)
@@ -204,7 +204,7 @@ case class EnsureRequirements(conf: SQLConf) extends Rule[SparkPlan] {
    * partitioning of the join nodes' children.
    */
   private def reorderJoinPredicates(plan: SparkPlan): SparkPlan = {
-    //TODO will not recognize plugin versions of these operators
+    // TODO will not recognize plugin versions of these operators
     plan match {
       case ShuffledHashJoinExec(leftKeys, rightKeys, joinType, buildSide, condition, left, right) =>
         val (reorderedLeftKeys, reorderedRightKeys) =

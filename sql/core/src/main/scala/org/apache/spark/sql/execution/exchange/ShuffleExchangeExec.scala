@@ -23,7 +23,6 @@ import java.util.function.Supplier
 import scala.concurrent.Future
 
 import org.apache.spark._
-
 import org.apache.spark.internal.config
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
@@ -60,11 +59,9 @@ case class ShuffleExchangeExec(
     child: SparkPlan,
     canChangeNumPartitions: Boolean = true) extends Exchange with ShuffleExchangeExecLike {
 
-  //assert(!child.supportsColumnar)
-
   private lazy val writeMetrics =
     SQLShuffleWriteMetricsReporter.createShuffleWriteMetrics(sparkContext)
-  /*private[sql]*/ lazy val readMetrics =
+  lazy val readMetrics =
     SQLShuffleReadMetricsReporter.createShuffleReadMetrics(sparkContext)
   override lazy val metrics = Map(
     "dataSize" -> SQLMetrics.createSizeMetric(sparkContext, "data size")
@@ -84,11 +81,7 @@ case class ShuffleExchangeExec(
     if (inputRDD.getNumPartitions == 0) {
       Future.successful(null)
     } else {
-//      if (child.supportsColumnar) {
-//        sparkContext.submitMapStage(shuffleDependencyColumnar)
-//      } else {
         sparkContext.submitMapStage(shuffleDependency)
-//      }
     }
   }
 

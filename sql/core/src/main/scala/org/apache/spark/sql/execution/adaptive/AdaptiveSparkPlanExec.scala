@@ -202,7 +202,6 @@ case class AdaptiveSparkPlanExec(
         events.drainTo(rem)
         (Seq(nextMsg) ++ rem.asScala).foreach {
           case StageSuccess(stage, res) =>
-            //println(s"SUCCESS: ${stage}")
             stage.resultOption = Some(res)
           case StageFailure(stage, ex) =>
             errors.append(ex)
@@ -389,13 +388,12 @@ case class AdaptiveSparkPlanExec(
       if (plan.children.isEmpty) {
         CreateStageResult(newPlan = plan, allChildStagesMaterialized = true, newStages = Seq.empty)
       } else {
-        //TODO how do we handle case where plan is a BroadcastHashJoin and the left and right
-        // are mixed CPU/GPU workloads? currently blows up .. fails to bind references
         val results: Seq[CreateStageResult] = plan.children.map(createQueryStages)
 
         val resultsWithTransitions: Seq[CreateStageResult] = if (!plan.supportsColumnar) {
           // we may need some transitions
-          val transitions = ApplyColumnarRulesAndInsertTransitions(conf, context.session.sessionState.columnarRules,
+          val transitions = ApplyColumnarRulesAndInsertTransitions(conf,
+            context.session.sessionState.columnarRules,
             convertToRows = false)
           results.map {
             case plan if plan.newPlan.supportsColumnar =>
@@ -524,11 +522,11 @@ case class AdaptiveSparkPlanExec(
    * Re-optimize and run physical planning on the current logical plan based on the latest stats.
    */
   private def reOptimize(logicalPlan: LogicalPlan): (SparkPlan, LogicalPlan) = {
-    //println(s"reOptimize:\n${logicalPlan}")
+    // println(s"reOptimize:\n${logicalPlan}")
     logicalPlan.invalidateStatsCache()
     val optimized = optimizer.execute(logicalPlan)
     optimized.dumpQueryPlan("re-optimized logical plan")
-    //println(s"reOptimize; optimized:\n${logicalPlan}")
+    // println(s"reOptimize; optimized:\n${logicalPlan}")
     val sparkPlan = context.session.sessionState.planner.plan(ReturnAnswer(optimized)).next()
     sparkPlan.dumpQueryPlan("new physical plan")
     val newPlan = applyPhysicalRules(sparkPlan, preprocessingRules ++ reOptimizationRules)

@@ -42,8 +42,9 @@ object LogicalQueryStageStrategy extends Strategy with PredicateHelper {
 
   def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
 
-      //TODO reinstate .. the issue here is that with tpch query 4 for example, it
+      // TODO reinstate .. the issue here is that with tpch query 4 for example, it
       // tried to create a BHJ between CPU and GPU inputs and failed to bind references
+      // so we probably need to insert transitions directly here
 
 //    case ExtractEquiJoinKeys(joinType, leftKeys, rightKeys, condition, left, right, hint)
 //        if isBroadcastStage(left) || isBroadcastStage(right) =>
