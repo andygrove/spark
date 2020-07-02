@@ -148,6 +148,8 @@ case class ShuffleQueryStageExec(
       throw new IllegalStateException("wrong plan for shuffle stage:\n " + plan.treeString)
   }
 
+  override def supportsColumnar: Boolean = shuffle.supportsColumnar
+
   override def doMaterialize(): Future[Any] = attachTree(this, "execute") {
     shuffle.mapOutputStatisticsFuture
   }
@@ -184,6 +186,8 @@ case class ShuffleQueryStageExec(
 case class BroadcastQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
+
+  override def supportsColumnar: Boolean = plan.supportsColumnar
 
   @transient val broadcast = plan match {
     case b: BroadcastExchange => b
