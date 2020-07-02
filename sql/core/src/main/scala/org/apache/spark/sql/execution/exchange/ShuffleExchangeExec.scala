@@ -37,8 +37,18 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics, SQLShuffleReadMetricsReporter, SQLShuffleWriteMetricsReporter}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
+
+abstract class ShuffleExchange extends Exchange {
+  def mapOutputStatisticsFuture: Future[MapOutputStatistics]
+  def canChangeNumPartitions: Boolean
+  def shuffleDependency : ShuffleDependency[Int, InternalRow, InternalRow]
+  def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
+  private[sql] def readMetrics: Map[String, SQLMetric]
+  def child: SparkPlan
+}
 
 /**
  * Performs a shuffle that will result in the desired partitioning.
@@ -46,7 +56,7 @@ import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordCo
 case class ShuffleExchangeExec(
     override val outputPartitioning: Partitioning,
     child: SparkPlan,
-    canChangeNumPartitions: Boolean = true) extends Exchange {
+    canChangeNumPartitions: Boolean = true) extends ShuffleExchange {
 
   private lazy val writeMetrics =
     SQLShuffleWriteMetricsReporter.createShuffleWriteMetrics(sparkContext)
@@ -86,6 +96,9 @@ case class ShuffleExchangeExec(
       serializer,
       writeMetrics)
   }
+
+  override def shuffleDependencyColumnar: ShuffleDependency[Int, ColumnarBatch, ColumnarBatch] =
+    throw new IllegalStateException()
 
   /**
    * Caches the created ShuffleRowRDD so we can reuse that.
