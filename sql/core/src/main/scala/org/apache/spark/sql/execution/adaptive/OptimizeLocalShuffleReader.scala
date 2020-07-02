@@ -78,10 +78,24 @@ case class OptimizeLocalShuffleReader(conf: SQLConf) extends Rule[SparkPlan] {
   private def getPartitionSpecs(
       shuffleStage: ShuffleQueryStageExec,
       advisoryParallelism: Option[Int]): Seq[ShufflePartitionSpec] = {
-    val shuffleDep = shuffleStage.shuffle.shuffleDependency
-    val numReducers = shuffleDep.partitioner.numPartitions
+
+    // TODO perhaps it would be better to add methods to the ShuffleExchange abstract base class
+    // for getting the partition counts ?
+
+    val (numMappers, numReducers) = if (shuffleStage.shuffle.supportsColumnar) {
+      val shuffleDep = shuffleStage.shuffle.shuffleDependencyColumnar
+      val numReducers = shuffleDep.partitioner.numPartitions
+      val numMappers = shuffleDep.rdd.getNumPartitions
+      (numMappers, numReducers)
+
+    } else {
+      val shuffleDep = shuffleStage.shuffle.shuffleDependency
+      val numReducers = shuffleDep.partitioner.numPartitions
+      val numMappers = shuffleDep.rdd.getNumPartitions
+      (numMappers, numReducers)
+    }
+
     val expectedParallelism = advisoryParallelism.getOrElse(numReducers)
-    val numMappers = shuffleDep.rdd.getNumPartitions
     val splitPoints = if (numMappers == 0) {
       Seq.empty
     } else {
