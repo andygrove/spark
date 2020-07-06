@@ -189,6 +189,9 @@ case class AdaptiveSparkPlanExec(
         events.drainTo(rem)
         (Seq(nextMsg) ++ rem.asScala).foreach {
           case StageSuccess(stage, res) =>
+            // scalastyle:off println
+            println(s"SUCCESS:\n$stage")
+            // scalastyle:on println
             stage.resultOption = Some(res)
           case StageFailure(stage, ex) =>
             errors.append(ex)
@@ -373,6 +376,8 @@ case class AdaptiveSparkPlanExec(
   }
 
   private def newQueryStage(e: Exchange): QueryStageExec = {
+    // scalastyle:off println
+    println(s"newQueryStage:\n${e}")
     val optimizedPlan = applyPhysicalRules(e, queryStageOptimizerRules)
     val queryStage = e match {
       case _: ShuffleExchange =>
@@ -382,6 +387,8 @@ case class AdaptiveSparkPlanExec(
     }
     currentStageId += 1
     setLogicalLinkForNewQueryStage(queryStage, e)
+    println(s"newQueryStage returning:\n${queryStage}")
+    // scalastyle:on println
     queryStage
   }
 

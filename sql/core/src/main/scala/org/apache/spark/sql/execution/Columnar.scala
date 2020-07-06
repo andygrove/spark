@@ -509,12 +509,18 @@ case class ApplyColumnarRulesAndInsertTransitions(conf: SQLConf, columnarRules: 
   }
 
   def apply(plan: SparkPlan): SparkPlan = {
+    // scalastyle:off println
+    println("** ApplyColumnarRulesAndInsertTransitions BEFORE pre-insert")
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r : ColumnarRule) =>
       preInsertPlan = r.preColumnarTransitions(preInsertPlan))
+    println("** ApplyColumnarRulesAndInsertTransitions AFTER pre-insert")
     var postInsertPlan = insertTransitions(preInsertPlan)
+    println("** ApplyColumnarRulesAndInsertTransitions BEFORE post-insert")
     columnarRules.reverse.foreach((r : ColumnarRule) =>
       postInsertPlan = r.postColumnarTransitions(postInsertPlan))
+    println("** ApplyColumnarRulesAndInsertTransitions AFTER post-insert")
+    // scalastyle:on println
     postInsertPlan
   }
 }
