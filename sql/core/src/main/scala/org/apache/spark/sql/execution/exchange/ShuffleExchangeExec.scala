@@ -48,6 +48,7 @@ abstract class ShuffleExchange extends Exchange {
   def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
   private[sql] def readMetrics: Map[String, SQLMetric]
   def child: SparkPlan
+  override def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
 }
 
 /**
