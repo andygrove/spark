@@ -486,7 +486,7 @@ case class FileSourceScanExec(
     }
   }
 
-  protected override def doExecuteColumnar(): RDD[ColumnarBatch] = {
+  protected[sql] override def doExecuteColumnar(): RDD[ColumnarBatch] = {
     val numOutputRows = longMetric("numOutputRows")
     val scanTime = longMetric("scanTime")
     inputRDD.asInstanceOf[RDD[ColumnarBatch]].mapPartitionsInternal { batches =>

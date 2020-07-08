@@ -298,7 +298,7 @@ abstract class SparkPlan extends QueryPlan[SparkPlan] with Logging with Serializ
    * true. By convention the executor that creates a ColumnarBatch is responsible for closing it
    * when it is no longer needed. This allows input formats to be able to reuse batches if needed.
    */
-  protected def doExecuteColumnar(): RDD[ColumnarBatch] = {
+  protected[sql] def doExecuteColumnar(): RDD[ColumnarBatch] = {
     throw new IllegalStateException(s"Internal Error ${this.getClass} has column support" +
       s" mismatch:\n${this}")
   }

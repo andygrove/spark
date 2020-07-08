@@ -41,15 +41,17 @@ import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
 
+/**
+ * Base class for implementations of shuffle exchanges. This was added to enable plugins to
+ * provide columnar implementations of shuffle exchanges when Adaptive Query Execution is
+ * enabled.
+ */
 abstract class ShuffleExchange extends Exchange {
   def shuffleId: Int
   def getNumMappers: Int
   def getNumReducers: Int
   def canChangeNumPartitions: Boolean
   def mapOutputStatisticsFuture: Future[MapOutputStatistics]
-
-  // TODO this can probably be removed
-  override def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
 }
 
 /**

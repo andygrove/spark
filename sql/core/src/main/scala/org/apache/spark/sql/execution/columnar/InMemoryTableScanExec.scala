@@ -341,7 +341,7 @@ case class InMemoryTableScanExec(
     inputRDD
   }
 
-  protected override def doExecuteColumnar(): RDD[ColumnarBatch] = {
+  protected[sql] override def doExecuteColumnar(): RDD[ColumnarBatch] = {
     columnarInputRDD
   }
 }

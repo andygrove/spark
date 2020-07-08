@@ -37,6 +37,11 @@ import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
 import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.util.{SparkFatalException, ThreadUtils}
 
+/**
+ * Base class for implementations of broadcast exchanges. This was added to enable plugins to
+ * provide columnar implementations of broadcast exchanges when Adaptive Query Execution is
+ * enabled.
+ */
 abstract class BroadcastExchange extends Exchange {
   private[sql] def runId: UUID
   private[sql] def relationFuture: Future[broadcast.Broadcast[Any]]
