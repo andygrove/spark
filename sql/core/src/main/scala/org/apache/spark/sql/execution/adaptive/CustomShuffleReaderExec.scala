@@ -180,8 +180,10 @@ case class CustomShuffleReaderExec private(
     sendDriverMetrics()
 
     shuffleStage.map { stage =>
+      val shuffleExchangeExec = stage.shuffle.asInstanceOf[ShuffleExchangeExec]
       new ShuffledRowRDD(
-        stage.shuffle.shuffleDependency, stage.shuffle.readMetrics, partitionSpecs.toArray)
+        shuffleExchangeExec.shuffleDependency,
+        shuffleExchangeExec.readMetrics, partitionSpecs.toArray)
     }.getOrElse {
       throw new IllegalStateException("operating on canonicalized plan")
     }

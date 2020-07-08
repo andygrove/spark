@@ -42,14 +42,14 @@ import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
 
 abstract class ShuffleExchange extends Exchange {
+  def shuffleId: Int
   def getNumMappers: Int
   def getNumReducers: Int
   def canChangeNumPartitions: Boolean
   def mapOutputStatisticsFuture: Future[MapOutputStatistics]
-  def shuffleDependency : ShuffleDependency[Int, InternalRow, InternalRow]
-  def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
+
+  // TODO this can probably be removed
   override def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
-  private[sql] def readMetrics: Map[String, SQLMetric]
 }
 
 /**
@@ -74,6 +74,8 @@ case class ShuffleExchangeExec(
     new UnsafeRowSerializer(child.output.size, longMetric("dataSize"))
 
   @transient lazy val inputRDD: RDD[InternalRow] = child.execute()
+
+  override def shuffleId: Int = shuffleDependency.shuffleId
 
   override def getNumMappers: Int = shuffleDependency.rdd.getNumPartitions
 
@@ -102,9 +104,6 @@ case class ShuffleExchangeExec(
       serializer,
       writeMetrics)
   }
-
-  override def shuffleDependencyColumnar: ShuffleDependency[Int, ColumnarBatch, ColumnarBatch] =
-    throw new IllegalStateException(s"columnar execution is not supported by $this")
 
   /**
    * Caches the created ShuffleRowRDD so we can reuse that.
