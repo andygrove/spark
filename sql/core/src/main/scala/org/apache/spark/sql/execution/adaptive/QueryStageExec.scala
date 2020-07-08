@@ -33,6 +33,7 @@ import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.ThreadUtils
 
 /**
@@ -145,10 +146,16 @@ case class ShuffleQueryStageExec(
     override val plan: SparkPlan) extends QueryStageExec {
 
   @transient val shuffle = plan match {
-    case s: ShuffleExchangeExec => s
-    case ReusedExchangeExec(_, s: ShuffleExchangeExec) => s
+    case s: ShuffleExchange => s
+    case ReusedExchangeExec(_, s: ShuffleExchange) => s
     case _ =>
       throw new IllegalStateException("wrong plan for shuffle stage:\n " + plan.treeString)
+  }
+
+  override def supportsColumnar: Boolean = shuffle.supportsColumnar
+
+  override def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    shuffle.doExecuteColumnar()
   }
 
   override def doMaterialize(): Future[Any] = attachTree(this, "execute") {
@@ -190,9 +197,11 @@ case class BroadcastQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
 
+  override def supportsColumnar: Boolean = plan.supportsColumnar
+
   @transient val broadcast = plan match {
-    case b: BroadcastExchangeExec => b
-    case ReusedExchangeExec(_, b: BroadcastExchangeExec) => b
+    case b: BroadcastExchange => b
+    case ReusedExchangeExec(_, b: BroadcastExchange) => b
     case _ =>
       throw new IllegalStateException("wrong plan for broadcast stage:\n " + plan.treeString)
   }

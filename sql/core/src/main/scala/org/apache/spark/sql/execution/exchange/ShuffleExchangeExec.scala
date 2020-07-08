@@ -37,8 +37,20 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics, SQLShuffleReadMetricsReporter, SQLShuffleWriteMetricsReporter}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
+
+abstract class ShuffleExchange extends Exchange {
+  def getNumMappers: Int
+  def getNumReducers: Int
+  def canChangeNumPartitions: Boolean
+  def mapOutputStatisticsFuture: Future[MapOutputStatistics]
+  def shuffleDependency : ShuffleDependency[Int, InternalRow, InternalRow]
+  def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
+  override def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
+  private[sql] def readMetrics: Map[String, SQLMetric]
+}
 
 /**
  * Performs a shuffle that will result in the desired partitioning.
@@ -46,7 +58,7 @@ import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordCo
 case class ShuffleExchangeExec(
     override val outputPartitioning: Partitioning,
     child: SparkPlan,
-    canChangeNumPartitions: Boolean = true) extends Exchange {
+    canChangeNumPartitions: Boolean = true) extends ShuffleExchange {
 
   private lazy val writeMetrics =
     SQLShuffleWriteMetricsReporter.createShuffleWriteMetrics(sparkContext)
@@ -62,6 +74,10 @@ case class ShuffleExchangeExec(
     new UnsafeRowSerializer(child.output.size, longMetric("dataSize"))
 
   @transient lazy val inputRDD: RDD[InternalRow] = child.execute()
+
+  override def getNumMappers: Int = shuffleDependency.rdd.getNumPartitions
+
+  override def getNumReducers: Int = shuffleDependency.partitioner.numPartitions
 
   // 'mapOutputStatisticsFuture' is only needed when enable AQE.
   @transient lazy val mapOutputStatisticsFuture: Future[MapOutputStatistics] = {
@@ -86,6 +102,9 @@ case class ShuffleExchangeExec(
       serializer,
       writeMetrics)
   }
+
+  override def shuffleDependencyColumnar: ShuffleDependency[Int, ColumnarBatch, ColumnarBatch] =
+    throw new IllegalStateException(s"columnar execution is not supported by $this")
 
   /**
    * Caches the created ShuffleRowRDD so we can reuse that.
