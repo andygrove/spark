@@ -42,12 +42,14 @@ import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
 
 abstract class ShuffleExchange extends Exchange {
+  def shuffleId: Int
+  def getNumMappers: Int
+  def getNumReducers: Int
   def mapOutputStatisticsFuture: Future[MapOutputStatistics]
   def canChangeNumPartitions: Boolean
-  def shuffleDependency : ShuffleDependency[Int, InternalRow, InternalRow]
-  def shuffleDependencyColumnar : ShuffleDependency[Int, ColumnarBatch, ColumnarBatch]
-  private[sql] def readMetrics: Map[String, SQLMetric]
-  def child: SparkPlan
+
+  // TODO this was added to work around an issue where QueryStageExec needs to call
+  // this but it is private to the [sql] package .. perhaps there is a better solution
   override def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
 }
 
@@ -68,6 +70,12 @@ case class ShuffleExchangeExec(
   ) ++ readMetrics ++ writeMetrics
 
   override def nodeName: String = "Exchange"
+
+  override def shuffleId: Int = shuffleDependency.shuffleId
+
+  override def getNumMappers: Int = shuffleDependency.rdd.getNumPartitions
+
+  override def getNumReducers: Int = shuffleDependency.partitioner.numPartitions
 
   private val serializer: Serializer =
     new UnsafeRowSerializer(child.output.size, longMetric("dataSize"))
@@ -97,9 +105,6 @@ case class ShuffleExchangeExec(
       serializer,
       writeMetrics)
   }
-
-  override def shuffleDependencyColumnar: ShuffleDependency[Int, ColumnarBatch, ColumnarBatch] =
-    throw new IllegalStateException()
 
   /**
    * Caches the created ShuffleRowRDD so we can reuse that.

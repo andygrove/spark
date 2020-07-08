@@ -70,8 +70,9 @@ case class CustomShuffleReaderExec private(
     if (cachedShuffleRDD == null) {
       cachedShuffleRDD = child match {
         case stage: ShuffleQueryStageExec =>
+          val shuffle = stage.shuffle.asInstanceOf[ShuffleExchangeExec]
           new ShuffledRowRDD(
-            stage.shuffle.shuffleDependency, stage.shuffle.readMetrics, partitionSpecs.toArray)
+            shuffle.shuffleDependency, shuffle.readMetrics, partitionSpecs.toArray)
         case _ =>
           throw new IllegalStateException("operating on canonicalization plan")
       }
