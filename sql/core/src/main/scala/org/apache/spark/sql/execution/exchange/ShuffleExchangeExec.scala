@@ -112,7 +112,7 @@ case class ShuffleExchangeExec(
    */
   private var cachedShuffleRDD: ShuffledRowRDD = null
 
-  protected override def doExecute(): RDD[InternalRow] = attachTree(this, "execute") {
+  protected[sql] override def doExecute(): RDD[InternalRow] = attachTree(this, "execute") {
     // Returns the same ShuffleRowRDD if this plan is used by multiple plans.
     if (cachedShuffleRDD == null) {
       cachedShuffleRDD = new ShuffledRowRDD(shuffleDependency, readMetrics)

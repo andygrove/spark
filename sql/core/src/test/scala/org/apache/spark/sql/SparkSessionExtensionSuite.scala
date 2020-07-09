@@ -18,17 +18,19 @@ package org.apache.spark.sql
 
 import java.util.Locale
 
-import org.apache.spark.{SparkFunSuite, TaskContext}
+import scala.concurrent.Future
 
+import org.apache.spark.{MapOutputStatistics, SparkFunSuite, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
+import org.apache.spark.sql.catalyst.{FunctionIdentifier, InternalRow, TableIdentifier}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.parser.{CatalystSqlParser, ParserInterface}
 import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan, UnresolvedHint}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
-import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec
+import org.apache.spark.sql.execution.adaptive.{AdaptiveSparkPlanExec, QueryStageExec}
+import org.apache.spark.sql.execution.exchange.{ShuffleExchange, ShuffleExchangeExec}
 import org.apache.spark.sql.execution.vectorized.OnHeapColumnVector
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.COLUMN_BATCH_SIZE
@@ -165,6 +167,8 @@ class SparkSessionExtensionSuite extends SparkFunSuite {
         case _: ReplacedRowToColumnarExec => 1
         case _: ColumnarProjectExec => 10
         case _: ColumnarToRowExec => 100
+        case s: QueryStageExec => collectPlanSteps(s.plan).sum
+        case _: MyShuffleExchangeExec => 1000
       }
     }
 
@@ -184,8 +188,7 @@ class SparkSessionExtensionSuite extends SparkFunSuite {
       df.collect()
       // Verify that both pre and post processing of the plan worked.
       val found = collectPlanSteps(df.queryExecution.executedPlan).sum
-      assert(found == 111)
-
+      assert(found == 1111)
       // Verify that we get back the expected, wrong, result
       val result = df.collect()
       assert(result(0).getLong(0) == 102L) // Check that broken columnar Add was used.
@@ -690,6 +693,8 @@ case class PreRuleReplaceAddWithBrokenVersion() extends Rule[SparkPlan] {
   def replaceWithColumnarPlan(plan: SparkPlan): SparkPlan =
     try {
       plan match {
+        case e: ShuffleExchangeExec =>
+          MyShuffleExchangeExec(e)
         case plan: ProjectExec =>
           new ColumnarProjectExec(plan.projectList.map((exp) =>
             replaceWithColumnarExpression(exp).asInstanceOf[NamedExpression]),
@@ -706,6 +711,21 @@ case class PreRuleReplaceAddWithBrokenVersion() extends Rule[SparkPlan] {
     }
 
   override def apply(plan: SparkPlan): SparkPlan = replaceWithColumnarPlan(plan)
+}
+
+/**
+ * Custom Exchange used in tests to demonstrate that shuffles get replaced regardless of
+ * whether adaptive query is enabled.
+ */
+case class MyShuffleExchangeExec(delegate: ShuffleExchangeExec) extends ShuffleExchange {
+  override def shuffleId: Int = delegate.shuffleId
+  override def getNumMappers: Int = delegate.getNumMappers
+  override def getNumReducers: Int = delegate.getNumReducers
+  override def canChangeNumPartitions: Boolean = delegate.canChangeNumPartitions
+  override def mapOutputStatisticsFuture: Future[MapOutputStatistics] =
+    delegate.mapOutputStatisticsFuture
+  override def child: SparkPlan = delegate.child
+  override protected def doExecute(): RDD[InternalRow] = delegate.doExecute()
 }
 
 class ReplacedRowToColumnarExec(override val child: SparkPlan)
