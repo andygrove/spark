@@ -19,6 +19,7 @@ package org.apache.spark.sql
 import java.util.Locale
 
 import org.apache.spark.{SparkFunSuite, TaskContext}
+
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
@@ -27,6 +28,7 @@ import org.apache.spark.sql.catalyst.parser.{CatalystSqlParser, ParserInterface}
 import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan, UnresolvedHint}
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
+import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec
 import org.apache.spark.sql.execution.vectorized.OnHeapColumnVector
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.COLUMN_BATCH_SIZE
@@ -145,26 +147,43 @@ class SparkSessionExtensionSuite extends SparkFunSuite {
     }
   }
 
-  test("inject columnar") {
+  test("inject columnar AQE on") {
+    testInjectColumnar(true)
+  }
+
+  test("inject columnar AQE off") {
+    testInjectColumnar(false)
+  }
+
+  private def testInjectColumnar(adaptiveEnabled: Boolean) {
+
+    def collectPlanSteps(plan: SparkPlan): Seq[Int] = plan match {
+      case a: AdaptiveSparkPlanExec =>
+        assert(a.toString.startsWith("AdaptiveSparkPlan isFinalPlan=true"))
+        collectPlanSteps(a.executedPlan)
+      case _ => plan.collect {
+        case _: ReplacedRowToColumnarExec => 1
+        case _: ColumnarProjectExec => 10
+        case _: ColumnarToRowExec => 100
+      }
+    }
+
     val extensions = create { extensions =>
       extensions.injectColumnar(session =>
         MyColumarRule(PreRuleReplaceAddWithBrokenVersion(), MyPostRule()))
     }
     withSession(extensions) { session =>
-      // The ApplyColumnarRulesAndInsertTransitions rule is not applied when enable AQE
-      session.sessionState.conf.setConf(SQLConf.ADAPTIVE_EXECUTION_ENABLED, false)
+      session.sessionState.conf.setConf(SQLConf.ADAPTIVE_EXECUTION_ENABLED, adaptiveEnabled)
       assert(session.sessionState.columnarRules.contains(
         MyColumarRule(PreRuleReplaceAddWithBrokenVersion(), MyPostRule())))
       import session.sqlContext.implicits._
       // repartitioning avoids having the add operation pushed up into the LocalTableScan
       val data = Seq((100L), (200L), (300L)).toDF("vals").repartition(1)
       val df = data.selectExpr("vals + 1")
+      // execute the plan so that the final adaptive plan is available when AQE is on
+      df.collect()
       // Verify that both pre and post processing of the plan worked.
-      val found = df.queryExecution.executedPlan.collect {
-        case rep: ReplacedRowToColumnarExec => 1
-        case proj: ColumnarProjectExec => 10
-        case c2r: ColumnarToRowExec => 100
-      }.sum
+      val found = collectPlanSteps(df.queryExecution.executedPlan).sum
       assert(found == 111)
 
       // Verify that we get back the expected, wrong, result
