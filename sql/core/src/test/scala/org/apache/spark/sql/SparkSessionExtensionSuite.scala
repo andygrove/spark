@@ -27,10 +27,11 @@ import org.apache.spark.sql.catalyst.{FunctionIdentifier, InternalRow, TableIden
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.parser.{CatalystSqlParser, ParserInterface}
 import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan, UnresolvedHint}
+import org.apache.spark.sql.catalyst.plans.physical.BroadcastMode
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.adaptive.{AdaptiveSparkPlanExec, QueryStageExec}
-import org.apache.spark.sql.execution.exchange.{ShuffleExchange, ShuffleExchangeExec}
+import org.apache.spark.sql.execution.exchange.{BroadcastExchangeExec, ShuffleExchange, ShuffleExchangeExec}
 import org.apache.spark.sql.execution.vectorized.OnHeapColumnVector
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.COLUMN_BATCH_SIZE
@@ -169,6 +170,7 @@ class SparkSessionExtensionSuite extends SparkFunSuite {
         case _: ColumnarToRowExec => 100
         case s: QueryStageExec => collectPlanSteps(s.plan).sum
         case _: MyShuffleExchangeExec => 1000
+        case _: MyBroadcastExchangeExec => 10000
       }
     }
 
@@ -181,19 +183,23 @@ class SparkSessionExtensionSuite extends SparkFunSuite {
       assert(session.sessionState.columnarRules.contains(
         MyColumarRule(PreRuleReplaceAddWithBrokenVersion(), MyPostRule())))
       import session.sqlContext.implicits._
-      // repartitioning avoids having the add operation pushed up into the LocalTableScan
-      val data = Seq((100L), (200L), (300L)).toDF("vals").repartition(1)
-      val df = data.selectExpr("vals + 1")
+      // perform a join to inject a broadcast exchange
+      val left = Seq((1, 50L), (2, 100L), (3, 150L)).toDF("l1", "l2")
+      val right = Seq((1, 50L), (2, 100L), (3, 150L)).toDF("r1", "r2")
+      val data = left.join(right, $"l1" === $"r1")
+          // repartitioning avoids having the add operation pushed up into the LocalTableScan
+          .repartition(1)
+      val df = data.selectExpr("l2 + r2")
       // execute the plan so that the final adaptive plan is available when AQE is on
       df.collect()
       // Verify that both pre and post processing of the plan worked.
       val found = collectPlanSteps(df.queryExecution.executedPlan).sum
-      assert(found == 1111)
+      assert(found == 11121)
       // Verify that we get back the expected, wrong, result
       val result = df.collect()
-      assert(result(0).getLong(0) == 102L) // Check that broken columnar Add was used.
-      assert(result(1).getLong(0) == 202L)
-      assert(result(2).getLong(0) == 302L)
+      assert(result(0).getLong(0) == 101L) // Check that broken columnar Add was used.
+      assert(result(1).getLong(0) == 201L)
+      assert(result(2).getLong(0) == 301L)
     }
   }
 
@@ -694,7 +700,14 @@ case class PreRuleReplaceAddWithBrokenVersion() extends Rule[SparkPlan] {
     try {
       plan match {
         case e: ShuffleExchangeExec =>
-          MyShuffleExchangeExec(e)
+          // note that this is not actually columnar but demonstrates that exchanges can
+          // be replaced, particularly when adaptive query is enabled
+          val replaced = e.withNewChildren(e.children.map(replaceWithColumnarPlan))
+          MyShuffleExchangeExec(replaced.asInstanceOf[ShuffleExchangeExec])
+        case e: BroadcastExchangeExec =>
+          // note that this is not actually columnar but demonstrates that exchanges can
+          // be replaced, particularly when adaptive query is enabled
+          new MyBroadcastExchangeExec(e.mode, e.child)
         case plan: ProjectExec =>
           new ColumnarProjectExec(plan.projectList.map((exp) =>
             replaceWithColumnarExpression(exp).asInstanceOf[NamedExpression]),
@@ -714,7 +727,7 @@ case class PreRuleReplaceAddWithBrokenVersion() extends Rule[SparkPlan] {
 }
 
 /**
- * Custom Exchange used in tests to demonstrate that shuffles get replaced regardless of
+ * Custom Exchange used in tests to demonstrate that shuffles can be replaced regardless of
  * whether adaptive query is enabled.
  */
 case class MyShuffleExchangeExec(delegate: ShuffleExchangeExec) extends ShuffleExchange {
@@ -726,6 +739,22 @@ case class MyShuffleExchangeExec(delegate: ShuffleExchangeExec) extends ShuffleE
     delegate.mapOutputStatisticsFuture
   override def child: SparkPlan = delegate.child
   override protected def doExecute(): RDD[InternalRow] = delegate.doExecute()
+}
+
+/**
+ * Custom Exchange used in tests to demonstrate that broadcasts can be replaced regardless of
+ * whether adaptive query is enabled.
+ *
+ * Note that extending a Spark case class is not recommended, but this was the easiest way to
+ * implement these tests.
+ */
+class MyBroadcastExchangeExec(mode: BroadcastMode,
+    child: SparkPlan) extends BroadcastExchangeExec(mode, child) {
+  override def equals(o: Any): Boolean = o match {
+    case o: MyBroadcastExchangeExec => mode.equals(o.mode) && child.equals(o.child)
+    case _ => false
+  }
+  override def hashCode(): Int = mode.hashCode() + child.hashCode()
 }
 
 class ReplacedRowToColumnarExec(override val child: SparkPlan)
