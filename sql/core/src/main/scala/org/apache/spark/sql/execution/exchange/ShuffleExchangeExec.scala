@@ -52,6 +52,7 @@ abstract class ShuffleExchange extends Exchange {
   def getNumReducers: Int
   def canChangeNumPartitions: Boolean
   def mapOutputStatisticsFuture: Future[MapOutputStatistics]
+  override protected[sql] def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
 }
 
 /**

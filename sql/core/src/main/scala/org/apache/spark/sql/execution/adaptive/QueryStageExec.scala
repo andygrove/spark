@@ -60,6 +60,11 @@ abstract class QueryStageExec extends LeafExecNode {
   val plan: SparkPlan
 
   /**
+   * Query stages can potentially be columnar when replaced by plugins.
+   */
+  override def supportsColumnar: Boolean = plan.supportsColumnar
+
+  /**
    * Materialize this query stage, to prepare for the execution, like submitting map stages,
    * broadcasting data, etc. The caller side can use the returned [[Future]] to wait until this
    * stage is ready.
@@ -198,8 +203,6 @@ case class ShuffleQueryStageExec(
 case class BroadcastQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
-
-  override def supportsColumnar: Boolean = plan.supportsColumnar
 
   @transient val broadcast = plan match {
     case b: BroadcastExchange => b
