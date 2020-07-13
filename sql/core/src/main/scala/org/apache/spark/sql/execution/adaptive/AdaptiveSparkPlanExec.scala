@@ -374,6 +374,8 @@ case class AdaptiveSparkPlanExec(
   }
 
   private def newQueryStage(e: Exchange): QueryStageExec = {
+    // apply optimizer rules to the Exchange node and its children, allowing plugins to be
+    // able to replace the Exchange node itself
     val optimizedPlan = applyPhysicalRules(e, queryStageOptimizerRules)
     val queryStage = e match {
       case _: ShuffleExchange =>
