@@ -139,7 +139,8 @@ abstract class QueryStageExec extends LeafExecNode {
 }
 
 /**
- * A shuffle query stage whose child is a [[ShuffleExchangeExec]] or [[ReusedExchangeExec]].
+ * A shuffle query stage whose child is a [[ShuffleExchange]] or a [[ReusedExchangeExec]] wrapping
+ * a [[ShuffleExchange]].
  */
 case class ShuffleQueryStageExec(
     override val id: Int,
@@ -191,7 +192,8 @@ case class ShuffleQueryStageExec(
 }
 
 /**
- * A broadcast query stage whose child is a [[BroadcastExchangeExec]] or [[ReusedExchangeExec]].
+ * A broadcast query stage whose child is a [[BroadcastExchange]] or a [[ReusedExchangeExec]]
+ * wrapping a [[BroadcastExchange]].
  */
 case class BroadcastQueryStageExec(
     override val id: Int,
