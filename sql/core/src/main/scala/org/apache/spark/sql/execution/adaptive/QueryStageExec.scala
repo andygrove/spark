@@ -99,6 +99,14 @@ abstract class QueryStageExec extends LeafExecNode {
   @volatile
   protected var _resultOption = new AtomicReference[Option[Any]](None)
 
+  @transient val exchange = plan match {
+    case e: Exchange => e
+    case ReusedExchangeExec(_, e: Exchange) => e
+    case _ =>
+      throw new IllegalStateException(s"wrong plan for ${this.getClass.getSimpleName} " +
+          s"stage:\n " + plan.treeString)
+  }
+
   private[adaptive] def resultOption: AtomicReference[Option[Any]] = _resultOption
 
   override def output: Seq[Attribute] = plan.output
@@ -112,6 +120,7 @@ abstract class QueryStageExec extends LeafExecNode {
 
   protected override def doPrepare(): Unit = plan.prepare()
   protected override def doExecute(): RDD[InternalRow] = plan.execute()
+  override def doExecuteColumnar(): RDD[ColumnarBatch] = exchange.doExecuteColumnar()
   override def doExecuteBroadcast[T](): Broadcast[T] = plan.executeBroadcast()
   override def doCanonicalize(): SparkPlan = plan.canonicalized
 
@@ -147,18 +156,7 @@ case class ShuffleQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
 
-  @transient val shuffle = plan match {
-    case s: ShuffleExchange => s
-    case ReusedExchangeExec(_, s: ShuffleExchange) => s
-    case _ =>
-      throw new IllegalStateException("wrong plan for shuffle stage:\n " + plan.treeString)
-  }
-
-  override def supportsColumnar: Boolean = shuffle.supportsColumnar
-
-  override def doExecuteColumnar(): RDD[ColumnarBatch] = {
-    shuffle.doExecuteColumnar()
-  }
+  @transient val shuffle = exchange.asInstanceOf[ShuffleExchange]
 
   override def doMaterialize(): Future[Any] = attachTree(this, "execute") {
     shuffle.mapOutputStatisticsFuture
@@ -200,12 +198,7 @@ case class BroadcastQueryStageExec(
     override val id: Int,
     override val plan: SparkPlan) extends QueryStageExec {
 
-  @transient val broadcast = plan match {
-    case b: BroadcastExchange => b
-    case ReusedExchangeExec(_, b: BroadcastExchange) => b
-    case _ =>
-      throw new IllegalStateException("wrong plan for broadcast stage:\n " + plan.treeString)
-  }
+  @transient val broadcast = exchange.asInstanceOf[BroadcastExchange]
 
   @transient private lazy val materializeWithTimeout = {
     val broadcastFuture = broadcast.completionFuture

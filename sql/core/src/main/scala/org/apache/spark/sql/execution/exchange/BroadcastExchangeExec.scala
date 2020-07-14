@@ -25,6 +25,7 @@ import scala.concurrent.duration.NANOSECONDS
 import scala.util.control.NonFatal
 
 import org.apache.spark.{broadcast, SparkException}
+
 import org.apache.spark.launcher.SparkLauncher
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -34,6 +35,7 @@ import org.apache.spark.sql.execution.{SparkPlan, SQLExecution}
 import org.apache.spark.sql.execution.joins.HashedRelation
 import org.apache.spark.sql.execution.metric.SQLMetrics
 import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.util.{SparkFatalException, ThreadUtils}
 
@@ -165,6 +167,11 @@ case class BroadcastExchangeExec(
   override protected def doExecute(): RDD[InternalRow] = {
     throw new UnsupportedOperationException(
       "BroadcastExchange does not support the execute() code path.")
+  }
+
+  override protected[sql] def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    throw new UnsupportedOperationException(
+      "BroadcastExchange does not support the executeColumnar() code path.")
   }
 
   override protected[sql] def doExecuteBroadcast[T](): broadcast.Broadcast[T] = {
