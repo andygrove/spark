@@ -60,11 +60,6 @@ abstract class QueryStageExec extends LeafExecNode {
   val plan: SparkPlan
 
   /**
-   * Query stages can potentially be columnar when replaced by plugins.
-   */
-  override def supportsColumnar: Boolean = plan.supportsColumnar
-
-  /**
    * Materialize this query stage, to prepare for the execution, like submitting map stages,
    * broadcasting data, etc. The caller side can use the returned [[Future]] to wait until this
    * stage is ready.
@@ -113,6 +108,7 @@ abstract class QueryStageExec extends LeafExecNode {
   override def executeTake(n: Int): Array[InternalRow] = plan.executeTake(n)
   override def executeTail(n: Int): Array[InternalRow] = plan.executeTail(n)
   override def executeToIterator(): Iterator[InternalRow] = plan.executeToIterator()
+  override def supportsColumnar: Boolean = plan.supportsColumnar
 
   protected override def doPrepare(): Unit = plan.prepare()
   protected override def doExecute(): RDD[InternalRow] = plan.execute()
