@@ -40,13 +40,7 @@ import org.apache.spark.sql.vectorized.ColumnarBatch
  */
 abstract class Exchange extends UnaryExecNode {
   override def output: Seq[Attribute] = child.output
-
   override def stringArgs: Iterator[Any] = super.stringArgs ++ Iterator(s"[id=#$id]")
-
-  // the visibility needs to change here to allow ShuffleQueryStageExec to invoke this
-  // method which would not normally be allowed because of the different packages involved
-  // (sql.execution.exchange and sql.execution.adaptive).
-  override protected[sql] def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
 }
 
 /**
