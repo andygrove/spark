@@ -738,7 +738,7 @@ case class MyShuffleExchangeExec(delegate: ShuffleExchangeExec) extends ShuffleE
   override def mapOutputStatisticsFuture: Future[MapOutputStatistics] =
     delegate.mapOutputStatisticsFuture
   override def child: SparkPlan = delegate.child
-  override protected def doExecute(): RDD[InternalRow] = delegate.doExecute()
+  override protected def doExecute(): RDD[InternalRow] = delegate.execute()
 }
 
 /**
