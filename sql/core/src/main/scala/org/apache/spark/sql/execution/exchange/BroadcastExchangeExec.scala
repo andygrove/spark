@@ -34,9 +34,15 @@ import org.apache.spark.sql.execution.{SparkPlan, SQLExecution}
 import org.apache.spark.sql.execution.joins.HashedRelation
 import org.apache.spark.sql.execution.metric.SQLMetrics
 import org.apache.spark.sql.internal.{SQLConf, StaticSQLConf}
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.util.{SparkFatalException, ThreadUtils}
 
+/**
+ * Base class for implementations of broadcast exchanges. This was added to enable plugins to
+ * provide columnar implementations of broadcast exchanges when Adaptive Query Execution is
+ * enabled.
+ */
 abstract class BroadcastExchange extends Exchange {
   private[sql] def runId: UUID
   private[sql] def relationFuture: Future[broadcast.Broadcast[Any]]
@@ -160,6 +166,11 @@ case class BroadcastExchangeExec(
   override protected def doExecute(): RDD[InternalRow] = {
     throw new UnsupportedOperationException(
       "BroadcastExchange does not support the execute() code path.")
+  }
+
+  override protected[sql] def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    throw new UnsupportedOperationException(
+      "BroadcastExchange does not support the executeColumnar() code path.")
   }
 
   override protected[sql] def doExecuteBroadcast[T](): broadcast.Broadcast[T] = {

@@ -41,16 +41,17 @@ import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.MutablePair
 import org.apache.spark.util.collection.unsafe.sort.{PrefixComparators, RecordComparator}
 
+/**
+ * Base class for implementations of shuffle exchanges. This was added to enable plugins to
+ * provide columnar implementations of shuffle exchanges when Adaptive Query Execution is
+ * enabled.
+ */
 abstract class ShuffleExchange extends Exchange {
   def shuffleId: Int
   def getNumMappers: Int
   def getNumReducers: Int
-  def mapOutputStatisticsFuture: Future[MapOutputStatistics]
   def canChangeNumPartitions: Boolean
-
-  // TODO this was added to work around an issue where QueryStageExec needs to call
-  // this but it is private to the [sql] package .. perhaps there is a better solution
-  override def doExecuteColumnar(): RDD[ColumnarBatch] = super.doExecuteColumnar()
+  def mapOutputStatisticsFuture: Future[MapOutputStatistics]
 }
 
 /**
@@ -71,16 +72,16 @@ case class ShuffleExchangeExec(
 
   override def nodeName: String = "Exchange"
 
+  private val serializer: Serializer =
+    new UnsafeRowSerializer(child.output.size, longMetric("dataSize"))
+
+  @transient lazy val inputRDD: RDD[InternalRow] = child.execute()
+
   override def shuffleId: Int = shuffleDependency.shuffleId
 
   override def getNumMappers: Int = shuffleDependency.rdd.getNumPartitions
 
   override def getNumReducers: Int = shuffleDependency.partitioner.numPartitions
-
-  private val serializer: Serializer =
-    new UnsafeRowSerializer(child.output.size, longMetric("dataSize"))
-
-  @transient lazy val inputRDD: RDD[InternalRow] = child.execute()
 
   // 'mapOutputStatisticsFuture' is only needed when enable AQE.
   @transient lazy val mapOutputStatisticsFuture: Future[MapOutputStatistics] = {
