@@ -39,7 +39,7 @@ case class ColumnarExchange(child: SparkPlan) extends Exchange {
 
   override protected def doExecute(): RDD[InternalRow] = throw new RanRowBased
 
-  override protected[sql] def doExecuteColumnar(): RDD[ColumnarBatch] = throw new RanColumnar
+  override protected def doExecuteColumnar(): RDD[ColumnarBatch] = throw new RanColumnar
 }
 
 class ExchangeSuite extends SparkPlanTest with SharedSparkSession {
