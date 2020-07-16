@@ -114,6 +114,9 @@ case class OptimizeLocalShuffleReader(conf: SQLConf) extends Rule[SparkPlan] {
     }
 
     plan match {
+      // skip the top-level exchange operator
+      case s: Exchange =>
+        s.withNewChildren(s.children.map(apply))
       case s: SparkPlan if canUseLocalShuffleReader(s) =>
         createLocalReader(s)
       case s: SparkPlan =>
