@@ -27,7 +27,7 @@ import org.apache.spark.sql.catalyst.expressions.ExpressionInfo
 import org.apache.spark.sql.catalyst.parser.ParserInterface
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.rules.Rule
-import org.apache.spark.sql.execution.ColumnarRule
+import org.apache.spark.sql.execution.{ColumnarRule, SparkPlan}
 
 /**
  * :: Experimental ::
@@ -96,8 +96,10 @@ class SparkSessionExtensions {
   type ParserBuilder = (SparkSession, ParserInterface) => ParserInterface
   type FunctionDescription = (FunctionIdentifier, ExpressionInfo, FunctionBuilder)
   type ColumnarRuleBuilder = SparkSession => ColumnarRule
+  type PluginAdaptiveRuleBuilder = SparkSession => Rule[SparkPlan]
 
   private[this] val columnarRuleBuilders = mutable.Buffer.empty[ColumnarRuleBuilder]
+  private[this] val pluginAdaptiveRules = mutable.Buffer.empty[PluginAdaptiveRuleBuilder]
 
   /**
    * Build the override rules for columnar execution.
@@ -107,10 +109,24 @@ class SparkSessionExtensions {
   }
 
   /**
+   * Build the override rules for columnar execution.
+   */
+  private[sql] def buildPluginAdaptiveRules(session: SparkSession): Seq[Rule[SparkPlan]] = {
+    pluginAdaptiveRules.map(_.apply(session))
+  }
+
+  /**
    * Inject a rule that can override the columnar execution of an executor.
    */
   def injectColumnar(builder: ColumnarRuleBuilder): Unit = {
     columnarRuleBuilders += builder
+  }
+
+  /**
+   * Inject a rule that can override the columnar execution of an executor.
+   */
+  def injectAdaptiveRule(builder: PluginAdaptiveRuleBuilder): Unit = {
+    pluginAdaptiveRules += builder
   }
 
   private[this] val resolutionRuleBuilders = mutable.Buffer.empty[RuleBuilder]

@@ -26,7 +26,7 @@ import org.apache.spark.sql.catalyst.parser.ParserInterface
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.connector.catalog.CatalogManager
-import org.apache.spark.sql.execution.{ColumnarRule, QueryExecution, SparkOptimizer, SparkPlanner, SparkSqlParser}
+import org.apache.spark.sql.execution.{ColumnarRule, QueryExecution, SparkOptimizer, SparkPlan, SparkPlanner, SparkSqlParser}
 import org.apache.spark.sql.execution.analysis.DetectAmbiguousSelfJoin
 import org.apache.spark.sql.execution.command.CommandCheck
 import org.apache.spark.sql.execution.datasources._
@@ -284,6 +284,10 @@ abstract class BaseSessionStateBuilder(
     extensions.buildColumnarRules(session)
   }
 
+  protected def pluginAdaptiveRules: Seq[Rule[SparkPlan]] = {
+    extensions.buildPluginAdaptiveRules(session)
+  }
+
   /**
    * Create a query execution object.
    */
@@ -335,7 +339,8 @@ abstract class BaseSessionStateBuilder(
       () => resourceLoader,
       createQueryExecution,
       createClone,
-      columnarRules)
+      columnarRules,
+      pluginAdaptiveRules)
   }
 }
 
