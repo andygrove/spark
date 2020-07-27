@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.execution.adaptive
 
+import org.apache.spark.{MapOutputTrackerMaster, SparkEnv}
+
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ShuffleExchangeExec}
@@ -78,10 +80,11 @@ case class OptimizeLocalShuffleReader(conf: SQLConf) extends Rule[SparkPlan] {
   private def getPartitionSpecs(
       shuffleStage: ShuffleQueryStageExec,
       advisoryParallelism: Option[Int]): Seq[ShufflePartitionSpec] = {
-    val shuffleDep = shuffleStage.shuffle.shuffleDependency
-    val numReducers = shuffleDep.partitioner.numPartitions
+    val numReducers = shuffleStage.shuffle.numPartitions
     val expectedParallelism = advisoryParallelism.getOrElse(numReducers)
-    val numMappers = shuffleDep.rdd.getNumPartitions
+    val mapOutputTracker = SparkEnv.get.mapOutputTracker.asInstanceOf[MapOutputTrackerMaster]
+    val numMappers =
+      mapOutputTracker.shuffleStatuses(shuffleStage.mapStats.get.shuffleId).mapStatuses.length
     val splitPoints = if (numMappers == 0) {
       Seq.empty
     } else {
