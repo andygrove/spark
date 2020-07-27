@@ -18,7 +18,6 @@
 package org.apache.spark.sql.execution.adaptive
 
 import org.apache.spark.{MapOutputTrackerMaster, SparkEnv}
-
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.exchange.{EnsureRequirements, ShuffleExchangeExec}

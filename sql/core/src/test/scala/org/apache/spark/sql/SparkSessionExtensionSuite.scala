@@ -18,17 +18,23 @@ package org.apache.spark.sql
 
 import java.util.{Locale, UUID}
 
-import org.apache.spark.{SparkFunSuite, TaskContext}
+import scala.concurrent.Future
+
+import org.apache.spark.{MapOutputStatistics, SparkFunSuite, TaskContext}
+
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.catalyst.{FunctionIdentifier, TableIdentifier}
+import org.apache.spark.sql.catalyst.{FunctionIdentifier, InternalRow, TableIdentifier}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.parser.{CatalystSqlParser, ParserInterface}
-import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan, UnresolvedHint}
+import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan, Statistics, UnresolvedHint}
+import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.catalyst.trees.TreeNodeTag
 import org.apache.spark.sql.execution._
-import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec
+import org.apache.spark.sql.execution.adaptive.{AdaptiveSparkPlanExec, QueryStageExec}
+import org.apache.spark.sql.execution.exchange.{BroadcastExchangeExec, BroadcastExchangeLike, ShuffleExchangeExec, ShuffleExchangeLike}
 import org.apache.spark.sql.execution.vectorized.OnHeapColumnVector
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.COLUMN_BATCH_SIZE
@@ -728,7 +734,7 @@ case class PreRuleReplaceAddWithBrokenVersion() extends Rule[SparkPlan] {
           // be replaced.
           val replaced = e.withNewChildren(e.children.map(replaceWithColumnarPlan))
           MyShuffleExchangeExec(replaced.asInstanceOf[ShuffleExchangeExec])
-        case e: BroadcastExchangeExec =>
+        case e: MyBroadcastExchangeExec =>
           // note that this is not actually columnar but demonstrates that exchanges can
           // be replaced.
           val replaced = e.withNewChildren(e.children.map(replaceWithColumnarPlan))
@@ -772,7 +778,8 @@ case class MyShuffleExchangeExec(delegate: ShuffleExchangeExec) extends ShuffleE
  * Custom Exchange used in tests to demonstrate that broadcasts can be replaced regardless of
  * whether AQE is enabled.
  */
-case class MyBroadcastExchangeExec(delegate: BroadcastExchangeExec) extends BroadcastExchangeLike {
+case class MyBroadcastExchangeExec(delegate: BroadcastExchangeExec)
+    extends BroadcastExchangeLike {
   override def runId: UUID = delegate.runId
   override def relationFuture: java.util.concurrent.Future[Broadcast[Any]] =
     delegate.relationFuture

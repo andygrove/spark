@@ -22,7 +22,6 @@ import java.util.concurrent.TimeUnit
 import scala.concurrent.{Future, Promise}
 
 import org.apache.spark.{FutureAction, MapOutputStatistics, SparkException}
-
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -182,6 +181,8 @@ case class ShuffleQueryStageExec(
     val stats = resultOption.get.asInstanceOf[MapOutputStatistics]
     Option(stats)
   }
+
+  override def getRuntimeStatistics: Statistics = shuffle.runtimeStatistics
 }
 
 /**
@@ -230,6 +231,8 @@ case class BroadcastQueryStageExec(
       broadcast.relationFuture.cancel(true)
     }
   }
+
+  override def getRuntimeStatistics: Statistics = broadcast.runtimeStatistics
 }
 
 object BroadcastQueryStageExec {

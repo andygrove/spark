@@ -294,7 +294,7 @@ private object ShuffleStage {
       }
       Some(ShuffleStageInfo(s, mapStats, partitions))
 
-    case CustomShuffleReaderExec(s: ShuffleQueryStageExec, partitionSpecs)
+    case CustomShuffleReaderExec(s: ShuffleQueryStageExec, partitionSpecs, _)
       if s.mapStats.isDefined && partitionSpecs.nonEmpty =>
       val mapStats = s.mapStats.get
       val sizes = mapStats.bytesByPartitionId
