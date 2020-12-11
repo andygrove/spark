@@ -23,8 +23,9 @@ import java.sql.{Date, Timestamp}
 import java.util.concurrent.atomic.AtomicBoolean
 
 import org.apache.spark.{AccumulatorSuite, SparkException}
+
 import org.apache.spark.scheduler.{SparkListener, SparkListenerJobStart}
-import org.apache.spark.sql.catalyst.expressions.GenericRow
+import org.apache.spark.sql.catalyst.expressions.{Alias, GenericRow}
 import org.apache.spark.sql.catalyst.expressions.aggregate.{Complete, Partial}
 import org.apache.spark.sql.catalyst.optimizer.{ConvertToLocalRelation, NestedColumnAliasingSuite}
 import org.apache.spark.sql.catalyst.plans.logical.Project
@@ -37,6 +38,7 @@ import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.execution.datasources.v2.orc.OrcScan
 import org.apache.spark.sql.execution.datasources.v2.parquet.ParquetScan
 import org.apache.spark.sql.execution.joins.{BroadcastHashJoinExec, CartesianProductExec, SortMergeJoinExec}
+import org.apache.spark.sql.execution.SparkPlan
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.test.{SharedSparkSession, TestSQLContext}
@@ -203,6 +205,44 @@ class SQLQuerySuite extends QueryTest with SharedSparkSession with AdaptiveSpark
       sql("SELECT a FROM testData2 SORT BY a"),
       Seq(1, 1, 2, 2, 3, 3).map(Row(_))
     )
+  }
+
+  test("HashAggregate canonicalization") {
+    val data = Seq((1, 1)).toDF("c0", "c1")
+    val df1 = data.groupBy(col("c0")).agg(first("c1"))
+    val df2 = data.groupBy(col("c0")).agg(first("c1"))
+    assert(df1.queryExecution.executedPlan.canonicalized == df2.queryExecution.executedPlan.canonicalized)
+  }
+
+  test("SortAggregate canonicalization") {
+    val data = Seq(("a", "a")).toDF("c0", "c1")
+    val df1 = data.groupBy(col("c0")).agg(min("c1"))
+    val df2 = data.groupBy(col("c0")).agg(min("c1"))
+    println("BEFORE canonicalized #1")
+    val c1 = df1.queryExecution.executedPlan.canonicalized
+    println("BEFORE canonicalized #2")
+    val c2 = df2.queryExecution.executedPlan.canonicalized
+    println("BEFORE canonicalized #1")
+    forensics(c1)
+    println("BEFORE canonicalized #2")
+    forensics(c2)
+    assert(c1 ==
+        c2)
+  }
+
+  def forensics(plan: SparkPlan): Unit = {
+    plan match {
+      case s: SortAggregateExec =>
+        s.resultExpressions.foreach { e =>
+          e match {
+            case Alias(child, name) =>
+              println(child + " AS " + name)
+            case _ =>
+              println(e)
+          }
+        }
+      case _ =>
+    }
   }
 
   test("SPARK-7158 collect and take return different results") {

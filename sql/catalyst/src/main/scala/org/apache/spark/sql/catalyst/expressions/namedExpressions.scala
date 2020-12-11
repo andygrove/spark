@@ -244,6 +244,11 @@ case class AttributeReference(
     val qualifier: Seq[String] = Seq.empty[String])
   extends Attribute with Unevaluable {
 
+  println(s"AttributeReference() $name; $exprId")
+
+  if (exprId.id == 237) {
+    new RuntimeException("").printStackTrace()
+  }
   /**
    * Returns true iff the expression id is the same for both attributes.
    */
@@ -277,8 +282,10 @@ case class AttributeReference(
     h
   }
 
-  override def newInstance(): AttributeReference =
+  override def newInstance(): AttributeReference = {
+    println(s"AttributeReference.newInstance($name)")
     AttributeReference(name, dataType, nullable, metadata)(qualifier = qualifier)
+  }
 
   /**
    * Returns a copy of this [[AttributeReference]] with changed nullability.
@@ -311,6 +318,7 @@ case class AttributeReference(
   }
 
   override def withExprId(newExprId: ExprId): AttributeReference = {
+    println(s"AttributeReference.withExprId($name, $newExprId)")
     if (exprId == newExprId) {
       this
     } else {
