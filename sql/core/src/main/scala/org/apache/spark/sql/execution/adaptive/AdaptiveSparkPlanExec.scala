@@ -40,6 +40,7 @@ import org.apache.spark.sql.execution.bucketing.DisableUnnecessaryBucketedScan
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.execution.ui.{SparkListenerSQLAdaptiveExecutionUpdate, SparkListenerSQLAdaptiveSQLMetricUpdates, SQLPlanMetric}
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.ThreadUtils
 
 /**
@@ -295,6 +296,19 @@ case class AdaptiveSparkPlanExec(
     val rdd = getFinalPhysicalPlan().execute()
     finalPlanUpdate
     rdd
+  }
+
+  def doExecuteMaybeColumnar(): Either[RDD[ColumnarBatch], RDD[InternalRow]] = {
+    val plan = getFinalPhysicalPlan()
+    if (plan.supportsColumnar) {
+      val rdd = plan.executeColumnar()
+      finalPlanUpdate
+      Left(rdd)
+    } else {
+      val rdd = plan.execute()
+      finalPlanUpdate
+      Right(rdd)
+    }
   }
 
   protected override def stringArgs: Iterator[Any] = Iterator(s"isFinalPlan=$isFinalPlan")
