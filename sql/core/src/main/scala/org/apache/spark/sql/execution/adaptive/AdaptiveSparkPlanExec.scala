@@ -427,7 +427,7 @@ case class AdaptiveSparkPlanExec(
           println(s"newStage.plan.canonicalized: ${newStage.plan.canonicalized}")
           // scalastyle:on println
 
-          val queryStage = context.stageCache.getOrElseUpdate(newStage.canonicalized, newStage)
+          val queryStage = context.stageCache.getOrElseUpdate(newStage.plan.canonicalized, newStage)
           if (queryStage.ne(newStage)) {
             newStage = reuseQueryStage(queryStage, e)
           }
