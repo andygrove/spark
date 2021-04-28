@@ -23,8 +23,8 @@ import org.apache.spark.sql.catalyst.expressions.{DynamicPruningExpression, Expr
 import org.apache.spark.sql.catalyst.expressions.CodegenObjectFactoryMode._
 import org.apache.spark.sql.catalyst.plans.ExistenceJoin
 import org.apache.spark.sql.execution._
-import org.apache.spark.sql.execution.adaptive.{AdaptiveSparkPlanExec, AdaptiveSparkPlanHelper}
-import org.apache.spark.sql.execution.exchange.{BroadcastExchangeExec, ReusedExchangeExec}
+import org.apache.spark.sql.execution.adaptive.{AdaptiveSparkPlanExec, AdaptiveSparkPlanHelper, BroadcastQueryStageExec}
+import org.apache.spark.sql.execution.exchange.{BroadcastExchangeLike, ReusedExchangeExec}
 import org.apache.spark.sql.execution.joins.BroadcastHashJoinExec
 import org.apache.spark.sql.execution.streaming.{MemoryStream, StreamingQueryWrapper}
 import org.apache.spark.sql.functions._
@@ -173,6 +173,8 @@ abstract class DynamicPartitionPruningSuiteBase
       df: DataFrame,
       withSubquery: Boolean,
       withBroadcast: Boolean): Unit = {
+    df.collect()
+
     val plan = df.queryExecution.executedPlan
     val dpExprs = collectDynamicPruningExpressions(plan)
     val hasSubquery = dpExprs.exists {
@@ -193,9 +195,21 @@ abstract class DynamicPartitionPruningSuiteBase
     subqueryBroadcast.foreach { s =>
       s.child match {
         case _: ReusedExchangeExec => // reuse check ok.
-        case b: BroadcastExchangeExec =>
+        case BroadcastQueryStageExec(_, _: ReusedExchangeExec, _) => // reuse check ok.
+        case b: BroadcastExchangeLike =>
           val hasReuse = plan.find {
             case ReusedExchangeExec(_, e) => e eq b
+            case _ => false
+          }.isDefined
+          assert(hasReuse, s"$s\nshould have been reused in\n$plan")
+        case a: AdaptiveSparkPlanExec =>
+          val broadcastQueryStage = collectFirst(a) {
+            case b: BroadcastQueryStageExec => b
+          }
+          val broadcastPlan = broadcastQueryStage.get.broadcast
+          val hasReuse = find(plan) {
+            case ReusedExchangeExec(_, e) => e eq broadcastPlan
+            case b: BroadcastExchangeLike => b eq broadcastPlan
             case _ => false
           }.isDefined
           assert(hasReuse, s"$s\nshould have been reused in\n$plan")
@@ -206,7 +220,11 @@ abstract class DynamicPartitionPruningSuiteBase
 
     val isMainQueryAdaptive = plan.isInstanceOf[AdaptiveSparkPlanExec]
     subqueriesAll(plan).filterNot(subqueryBroadcast.contains).foreach { s =>
-      assert(s.find(_.isInstanceOf[AdaptiveSparkPlanExec]).isDefined == isMainQueryAdaptive)
+      val subquery = s match {
+        case r: ReusedSubqueryExec => r.child
+        case o => o
+      }
+      assert(subquery.find(_.isInstanceOf[AdaptiveSparkPlanExec]).isDefined == isMainQueryAdaptive)
     }
   }
 
@@ -1379,6 +1397,37 @@ abstract class DynamicPartitionPruningSuiteBase
         Row(1050, 2) ::
         Row(1060, 2) :: Nil
       )
+    }
+  }
+
+  test("SPARK-34637: test DPP side broadcast query stage is created firstly") {
+    withSQLConf(SQLConf.DYNAMIC_PARTITION_PRUNING_REUSE_BROADCAST_ONLY.key -> "true") {
+      val df = sql(
+        """ WITH view1 as (
+          |   SELECT f.store_id FROM fact_stats f WHERE f.units_sold = 70 group by f.store_id
+          | )
+          |
+          | SELECT * FROM view1 v1 join view1 v2 WHERE v1.store_id = v2.store_id
+        """.stripMargin)
+
+      // A possible resulting query plan:
+      // BroadcastHashJoin
+      // +- HashAggregate
+      //    +- ShuffleQueryStage
+      //       +- Exchange
+      //          +- HashAggregate
+      //             +- Filter
+      //                +- FileScan
+      //                   +- SubqueryBroadcast
+      //                      +- AdaptiveSparkPlan
+      //                         +- BroadcastQueryStage
+      //                            +- BroadcastExchange
+      //
+      // +- BroadcastQueryStage
+      //    +- ReusedExchange
+
+      checkPartitionPruningPredicate(df, false, true)
+      checkAnswer(df, Row(15, 15) :: Nil)
     }
   }
 }
