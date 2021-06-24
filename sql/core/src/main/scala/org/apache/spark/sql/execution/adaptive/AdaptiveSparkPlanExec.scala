@@ -40,6 +40,7 @@ import org.apache.spark.sql.execution.bucketing.DisableUnnecessaryBucketedScan
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.execution.ui.{SparkListenerSQLAdaptiveExecutionUpdate, SparkListenerSQLAdaptiveSQLMetricUpdates, SQLPlanMetric}
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.ThreadUtils
 
 /**
@@ -274,27 +275,48 @@ case class AdaptiveSparkPlanExec(
   }
 
   override def executeCollect(): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeCollect()
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(getFinalPhysicalPlan(), _.executeCollect())
   }
 
   override def executeTake(n: Int): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeTake(n)
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(getFinalPhysicalPlan(), _.executeTake(n))
   }
 
   override def executeTail(n: Int): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeTail(n)
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(getFinalPhysicalPlan(), _.executeTail(n))
   }
 
   override def doExecute(): RDD[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().execute()
+    withFinalPlanUpdate(getFinalPhysicalPlan(), _.execute())
+  }
+
+  override protected def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    // AdaptiveSparkPlanExec does not support columnar execution directly and supportsColumnar
+    // always returns false because we cannot know if the final stage is columnar
+    // or not until the child stages have been executed and the final stage has
+    // been re-planned
+    throw new IllegalStateException(s"Internal Error ${this.getClass} has column support" +
+      s" mismatch:\n${this}. Call doExecuteMaybeColumnar instead.")
+  }
+
+  /**
+   * Execute the child query stages and then execute the final query
+   * stage as either row-based or columnar, depending on the value
+   * reported by its supportsColumnar attribute.
+   */
+  def doExecuteMaybeColumnar(): Either[RDD[InternalRow], RDD[ColumnarBatch]] = {
+    val finalPlan = getFinalPhysicalPlan()
+    if (finalPlan.supportsColumnar) {
+      Right(withFinalPlanUpdate(finalPlan, _.executeColumnar()))
+    } else {
+      Left(withFinalPlanUpdate(finalPlan, _.execute()))
+    }
+  }
+
+  private def withFinalPlanUpdate[T](plan: SparkPlan, fun: SparkPlan => T): T = {
+    val result = fun(plan)
     finalPlanUpdate
-    rdd
+    result
   }
 
   protected override def stringArgs: Iterator[Any] = Iterator(s"isFinalPlan=$isFinalPlan")
