@@ -40,6 +40,7 @@ import org.apache.spark.sql.execution.bucketing.DisableUnnecessaryBucketedScan
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.execution.ui.{SparkListenerSQLAdaptiveExecutionUpdate, SparkListenerSQLAdaptiveSQLMetricUpdates, SQLPlanMetric}
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.ThreadUtils
 
 /**
@@ -159,6 +160,8 @@ case class AdaptiveSparkPlanExec(
   override def output: Seq[Attribute] = inputPlan.output
 
   override def doCanonicalize(): SparkPlan = inputPlan.canonicalized
+
+  override def supportsColumnar: Boolean = inputPlan.supportsColumnar
 
   override def resetMetrics(): Unit = {
     metrics.valuesIterator.foreach(_.reset())
@@ -288,33 +291,29 @@ case class AdaptiveSparkPlanExec(
   }
 
   override def executeCollect(): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeCollect()
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(_.executeCollect())
   }
 
   override def executeTake(n: Int): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeTake(n)
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(_.executeTake(n))
   }
 
   override def executeTail(n: Int): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeTail(n)
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(_.executeTail(n))
   }
 
   override def doExecute(): RDD[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().execute()
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(_.execute())
   }
 
-  override def doExecuteBroadcast[T](): broadcast.Broadcast[T] = {
-    val finalPlan = getFinalPhysicalPlan()
-    assert(finalPlan.isInstanceOf[BroadcastQueryStageExec])
-    finalPlan.doExecuteBroadcast()
+  override protected def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    withFinalPlanUpdate(_.executeColumnar())
+  }
+
+  private def withFinalPlanUpdate[T](fun: SparkPlan => T): T = {
+    val result = fun(getFinalPhysicalPlan())
+    finalPlanUpdate
+    result
   }
 
   protected override def stringArgs: Iterator[Any] = Iterator(s"isFinalPlan=$isFinalPlan")
