@@ -119,7 +119,8 @@ case class AdaptiveSparkPlanExec(
     val origins = inputPlan.collect {
       case s: ShuffleExchangeLike => s.shuffleOrigin
     }
-    val allRules = queryStageOptimizerRules ++ postStageCreationRules
+    val allRules = queryStageOptimizerRules ++ postStageCreationRules ++
+      context.session.sessionState.finalQueryStagePrepRules
     allRules.filter {
       case c: CustomShuffleReaderRule =>
         origins.forall(c.supportedShuffleOrigins.contains)
@@ -173,7 +174,7 @@ case class AdaptiveSparkPlanExec(
       .map(_.toLong).filter(SQLExecution.getQueryExecution(_) eq context.qe)
   }
 
-  private def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
+  def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
     if (isFinalPlan) return currentPhysicalPlan
 
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
