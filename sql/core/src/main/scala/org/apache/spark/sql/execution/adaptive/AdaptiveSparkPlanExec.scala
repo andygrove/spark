@@ -26,7 +26,7 @@ import scala.collection.mutable
 import scala.concurrent.ExecutionContext
 import scala.util.control.NonFatal
 
-import org.apache.spark.SparkException
+import org.apache.spark.{broadcast, SparkException}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.InternalRow
@@ -40,6 +40,7 @@ import org.apache.spark.sql.execution.bucketing.DisableUnnecessaryBucketedScan
 import org.apache.spark.sql.execution.exchange._
 import org.apache.spark.sql.execution.ui.{SparkListenerSQLAdaptiveExecutionUpdate, SparkListenerSQLAdaptiveSQLMetricUpdates, SQLPlanMetric}
 import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.ThreadUtils
 
 /**
@@ -107,7 +108,7 @@ case class AdaptiveSparkPlanExec(
   @transient private val postStageCreationRules = Seq(
     ApplyColumnarRulesAndInsertTransitions(context.session.sessionState.columnarRules),
     CollapseCodegenStages()
-  )
+  ) ++ context.session.sessionState.postStageCreationRules
 
   // The partitioning of the query output depends on the shuffle(s) in the final stage. If the
   // original plan contains a repartition operator, we need to preserve the specified partitioning,
@@ -158,6 +159,13 @@ case class AdaptiveSparkPlanExec(
 
   override def doCanonicalize(): SparkPlan = inputPlan.canonicalized
 
+  // This operator reports that output is row-based but because of the adaptive nature of
+  // execution, we don't really know whether the output is going to row-based or columnar
+  // until we start running the query, so there is finalPlanSupportsColumnar method that
+  // can be called at execution time to determine what the output format is.
+  // This operator can safely be wrapped in either RowToColumnarExec or ColumnarToRowExec.
+  override def supportsColumnar: Boolean = false
+
   override def resetMetrics(): Unit = {
     metrics.valuesIterator.foreach(_.reset())
     executedPlan.resetMetrics()
@@ -170,7 +178,7 @@ case class AdaptiveSparkPlanExec(
       .map(_.toLong).filter(SQLExecution.getQueryExecution(_) eq context.qe)
   }
 
-  private def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
+  def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
     if (isFinalPlan) return currentPhysicalPlan
 
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
@@ -274,27 +282,44 @@ case class AdaptiveSparkPlanExec(
   }
 
   override def executeCollect(): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeCollect()
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(_.executeCollect())
   }
 
   override def executeTake(n: Int): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeTake(n)
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(_.executeTake(n))
   }
 
   override def executeTail(n: Int): Array[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().executeTail(n)
-    finalPlanUpdate
-    rdd
+    withFinalPlanUpdate(_.executeTail(n))
   }
 
   override def doExecute(): RDD[InternalRow] = {
-    val rdd = getFinalPhysicalPlan().execute()
+    withFinalPlanUpdate(_.execute())
+  }
+
+  /**
+   * Determine if the final query stage supports columnar execution. Calling this method
+   * will trigger query execution if the query has not yet been executed.
+   */
+  def finalPlanSupportsColumnar(): Boolean = {
+    getFinalPhysicalPlan().supportsColumnar
+  }
+
+  override def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    withFinalPlanUpdate(_.executeColumnar())
+  }
+
+  private def withFinalPlanUpdate[T](fun: SparkPlan => T): T = {
+    val plan = getFinalPhysicalPlan()
+    val result = fun(plan)
     finalPlanUpdate
-    rdd
+    result
+  }
+
+  override def doExecuteBroadcast[T](): broadcast.Broadcast[T] = {
+    val finalPlan = getFinalPhysicalPlan()
+    assert(finalPlan.isInstanceOf[BroadcastQueryStageExec])
+    finalPlan.doExecuteBroadcast()
   }
 
   protected override def stringArgs: Iterator[Any] = Iterator(s"isFinalPlan=$isFinalPlan")

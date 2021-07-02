@@ -98,10 +98,12 @@ class SparkSessionExtensions {
   type ParserBuilder = (SparkSession, ParserInterface) => ParserInterface
   type FunctionDescription = (FunctionIdentifier, ExpressionInfo, FunctionBuilder)
   type ColumnarRuleBuilder = SparkSession => ColumnarRule
-  type QueryStagePrepRuleBuilder = SparkSession => Rule[SparkPlan]
+  type PhysicalPlanRuleBuilder = SparkSession => Rule[SparkPlan]
 
   private[this] val columnarRuleBuilders = mutable.Buffer.empty[ColumnarRuleBuilder]
-  private[this] val queryStagePrepRuleBuilders = mutable.Buffer.empty[QueryStagePrepRuleBuilder]
+  private[this] val queryStagePrepRuleBuilders = mutable.Buffer.empty[PhysicalPlanRuleBuilder]
+  private[this] val finalStagePrepRuleBuilders =
+    mutable.Buffer.empty[PhysicalPlanRuleBuilder]
 
   /**
    * Build the override rules for columnar execution.
@@ -117,6 +119,10 @@ class SparkSessionExtensions {
     queryStagePrepRuleBuilders.map(_.apply(session)).toSeq
   }
 
+  private[sql] def buildFinalStagePrepRules(session: SparkSession): Seq[Rule[SparkPlan]] = {
+    finalStagePrepRuleBuilders.map(_.apply(session)).toSeq
+  }
+
   /**
    * Inject a rule that can override the columnar execution of an executor.
    */
@@ -128,8 +134,12 @@ class SparkSessionExtensions {
    * Inject a rule that can override the the query stage preparation phase of adaptive query
    * execution.
    */
-  def injectQueryStagePrepRule(builder: QueryStagePrepRuleBuilder): Unit = {
+  def injectQueryStagePrepRule(builder: PhysicalPlanRuleBuilder): Unit = {
     queryStagePrepRuleBuilders += builder
+  }
+
+  def injectFinalStagePrepRule(builder: PhysicalPlanRuleBuilder): Unit = {
+    finalStagePrepRuleBuilders += builder
   }
 
   private[this] val resolutionRuleBuilders = mutable.Buffer.empty[RuleBuilder]
