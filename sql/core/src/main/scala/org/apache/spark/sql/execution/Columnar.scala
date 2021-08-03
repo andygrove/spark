@@ -493,7 +493,8 @@ case class RowToColumnarExec(child: SparkPlan) extends RowToColumnarTransition {
  * to/from columnar formatted data.
  */
 case class ApplyColumnarRulesAndInsertTransitions(
-    columnarRules: Seq[ColumnarRule])
+    columnarRules: Seq[ColumnarRule],
+    outputColumnar: Boolean = false)
   extends Rule[SparkPlan] {
 
   /**
@@ -503,7 +504,7 @@ case class ApplyColumnarRulesAndInsertTransitions(
     if (!plan.supportsColumnar) {
       // The tree feels kind of backwards
       // Columnar Processing will start here, so transition from row to columnar
-      RowToColumnarExec(insertTransitions(plan))
+      RowToColumnarExec(insertTransitions(plan, outputColumnar = false))
     } else if (!plan.isInstanceOf[RowToColumnarTransition]) {
       plan.withNewChildren(plan.children.map(insertRowToColumnar))
     } else {
@@ -514,13 +515,17 @@ case class ApplyColumnarRulesAndInsertTransitions(
   /**
    * Inserts RowToColumnarExecs and ColumnarToRowExecs where needed.
    */
-  private def insertTransitions(plan: SparkPlan): SparkPlan = {
-    if (plan.supportsColumnar) {
+  private def insertTransitions(plan: SparkPlan, outputColumnar: Boolean): SparkPlan = {
+    if (outputColumnar) {
+      // The tree feels kind of backwards
+      // This is the end of the columnar processing so go back to rows
+      insertRowToColumnar(plan)
+    } else if (plan.supportsColumnar) {
       // The tree feels kind of backwards
       // This is the end of the columnar processing so go back to rows
       ColumnarToRowExec(insertRowToColumnar(plan))
     } else if (!plan.isInstanceOf[ColumnarToRowTransition]) {
-      plan.withNewChildren(plan.children.map(insertTransitions))
+      plan.withNewChildren(plan.children.map(insertTransitions(_, outputColumnar = false)))
     } else {
       plan
     }
@@ -530,7 +535,7 @@ case class ApplyColumnarRulesAndInsertTransitions(
     var preInsertPlan: SparkPlan = plan
     columnarRules.foreach((r : ColumnarRule) =>
       preInsertPlan = r.preColumnarTransitions(preInsertPlan))
-    var postInsertPlan = insertTransitions(preInsertPlan)
+    var postInsertPlan = insertTransitions(preInsertPlan, outputColumnar)
     columnarRules.reverse.foreach((r : ColumnarRule) =>
       postInsertPlan = r.postColumnarTransitions(postInsertPlan))
     postInsertPlan

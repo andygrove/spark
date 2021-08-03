@@ -46,6 +46,7 @@ import org.apache.spark.sql.execution.{ColumnarRule, SparkPlan}
  * <li>(External) Catalog listeners.</li>
  * <li>Columnar Rules.</li>
  * <li>Adaptive Query Stage Preparation Rules.</li>
+ * <li>Adaptive Query Post Stage Preparation Rules.</li>
  * </ul>
  *
  * The extensions can be used by calling `withExtensions` on the [[SparkSession.Builder]], for
@@ -99,9 +100,12 @@ class SparkSessionExtensions {
   type FunctionDescription = (FunctionIdentifier, ExpressionInfo, FunctionBuilder)
   type ColumnarRuleBuilder = SparkSession => ColumnarRule
   type QueryStagePrepRuleBuilder = SparkSession => Rule[SparkPlan]
+  type PostStageCreationRuleBuilder = SparkSession => Rule[SparkPlan]
 
   private[this] val columnarRuleBuilders = mutable.Buffer.empty[ColumnarRuleBuilder]
   private[this] val queryStagePrepRuleBuilders = mutable.Buffer.empty[QueryStagePrepRuleBuilder]
+  private[this] val postStageCreationRuleBuilders =
+    mutable.Buffer.empty[PostStageCreationRuleBuilder]
 
   /**
    * Build the override rules for columnar execution.
@@ -118,6 +122,14 @@ class SparkSessionExtensions {
   }
 
   /**
+   * Build the override rules for the final query stage preparation phase of adaptive query
+   * execution.
+   */
+  private[sql] def buildPostStageCreationRules(session: SparkSession): Seq[Rule[SparkPlan]] = {
+    postStageCreationRuleBuilders.map(_.apply(session)).toSeq
+  }
+
+  /**
    * Inject a rule that can override the columnar execution of an executor.
    */
   def injectColumnar(builder: ColumnarRuleBuilder): Unit = {
@@ -125,11 +137,19 @@ class SparkSessionExtensions {
   }
 
   /**
-   * Inject a rule that can override the the query stage preparation phase of adaptive query
+   * Inject a rule that can override the query stage preparation phase of adaptive query
    * execution.
    */
   def injectQueryStagePrepRule(builder: QueryStagePrepRuleBuilder): Unit = {
     queryStagePrepRuleBuilders += builder
+  }
+
+  /**
+   * Inject a rule that can override the final query stage preparation phase of adaptive query
+   * execution.
+   */
+  def injectPostStageCreationRule(builder: PostStageCreationRuleBuilder): Unit = {
+    postStageCreationRuleBuilders += builder
   }
 
   private[this] val resolutionRuleBuilders = mutable.Buffer.empty[RuleBuilder]
