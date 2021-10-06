@@ -21,6 +21,7 @@ import java.io._
 import java.nio.ByteBuffer
 
 import scala.reflect.ClassTag
+import scala.util.{Failure, Try}
 
 import org.apache.spark.SparkConf
 import org.apache.spark.annotation.DeveloperApi
@@ -112,7 +113,20 @@ private[spark] class JavaSerializerInstance(
   override def deserialize[T: ClassTag](bytes: ByteBuffer, loader: ClassLoader): T = {
     val bis = new ByteBufferInputStream(bytes)
     val in = deserializeStream(bis, loader)
-    in.readObject()
+    val urls = loader match {
+      case urlCl: java.net.URLClassLoader => urlCl.getURLs
+      case _ => Array.empty
+    }
+    val diag = s"$loader with ${urls.mkString(", ")}"
+    Try {
+      in.readObject()
+    }.recoverWith {
+      case cce: ClassCastException =>
+        Failure(new RuntimeException(
+          s"CL_DEBUG ran into CCE using deserialize: $diag", cce))
+      case t: Throwable =>
+        Failure(new RuntimeException(s"CL_DEBUG Unexpected NonFatal exception: $diag", t))
+    }.get
   }
 
   override def serializeStream(s: OutputStream): SerializationStream = {
