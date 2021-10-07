@@ -117,7 +117,7 @@ private[spark] class JavaSerializerInstance(
       case urlCl: java.net.URLClassLoader => urlCl.getURLs
       case _ => Array.empty
     }
-    val diag = s"$loader with ${urls.mkString(", ")}"
+    val diag = s"$loader with ${urls.mkString(", ")}, parent loader is ${loader.getParent}"
     Try {
       in.readObject()
     }.recoverWith {
@@ -126,8 +126,7 @@ private[spark] class JavaSerializerInstance(
           s"CL_DEBUG ran into CCE using deserialize: $diag", cce))
       case t: Throwable =>
         Failure(new RuntimeException(s"CL_DEBUG Unexpected NonFatal exception: $diag", t))
-    }.get
-  }
+    }.get  }
 
   override def serializeStream(s: OutputStream): SerializationStream = {
     new JavaSerializationStream(s, counterReset, extraDebugInfo)
