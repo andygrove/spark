@@ -31,6 +31,8 @@ public class MutableURLClassLoader extends URLClassLoader {
 
   public MutableURLClassLoader(URL[] urls, ClassLoader parent) {
     super(urls, parent);
+    new Throwable("CL_DEBUG Created a mutable URL classloader: " + this + " with parent " + parent)
+            .printStackTrace();
   }
 
   @Override
