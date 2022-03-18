@@ -5,3 +5,6 @@
 *.xml text eol=lf
 *.py text eol=lf
 *.R text eol=lf
+sql/core/src/test/resources/sql-tests/results/cast.sql binary
+sql/core/src/test/resources/sql-tests/results/literals.sql binary
+sql/core/src/test/resources/sql-tests/results/ansi/literals.sql binary
