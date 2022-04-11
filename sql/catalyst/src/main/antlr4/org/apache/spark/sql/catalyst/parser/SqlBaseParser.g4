@@ -855,7 +855,7 @@ constant
     | identifier (SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)                                                                        #typeConstructor
     | number                                                                                   #numericLiteral
     | booleanValue                                                                             #booleanLiteral
-    | SINGLE_QUOTED_STRING                                                                     #stringLiteral
+    | SINGLE_QUOTED_STRING+                                                                    #stringLiteral
     | DOUBLE_QUOTED_STRING+                                                                    #quotedStringLiteral
     ;
 

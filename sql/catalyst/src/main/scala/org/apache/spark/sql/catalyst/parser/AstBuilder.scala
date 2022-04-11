@@ -2628,11 +2628,11 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitUnitToUnitInterval(ctx: UnitToUnitIntervalContext): CalendarInterval = {
     withOrigin(ctx) {
       val str = if (ctx.intervalValue.SINGLE_QUOTED_STRING != null) {
-        Option(ctx.intervalValue.SINGLE_QUOTED_STRING).map(string).map _
+        Option(ctx.intervalValue.SINGLE_QUOTED_STRING)
       } else {
-        Option(ctx.intervalValue.DOUBLE_QUOTED_STRING).map(string).map _
+        Option(ctx.intervalValue.DOUBLE_QUOTED_STRING)
       }
-      val value = str { interval =>
+      val value = str.map(string).map { interval =>
         if (ctx.intervalValue().MINUS() == null) {
           interval
         } else if (interval.startsWith("-")) {
@@ -2861,7 +2861,11 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Create a location string.
    */
   override def visitLocationSpec(ctx: LocationSpecContext): String = withOrigin(ctx) {
-    parseString(ctx)
+    if (ctx.SINGLE_QUOTED_STRING != null) {
+      string(ctx.SINGLE_QUOTED_STRING)
+    } else {
+      string(ctx.DOUBLE_QUOTED_STRING)
+    }
   }
 
   /**
@@ -2875,7 +2879,11 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Create a comment string.
    */
   override def visitCommentSpec(ctx: CommentSpecContext): String = withOrigin(ctx) {
-    parseString(ctx)
+    if (ctx.SINGLE_QUOTED_STRING != null) {
+      string(ctx.SINGLE_QUOTED_STRING)
+    } else {
+      string(ctx.DOUBLE_QUOTED_STRING)
+    }
   }
 
   /**
@@ -2970,8 +2978,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * identifier.
    */
   override def visitPropertyKey(key: PropertyKeyContext): String = {
-    if (key.STRING != null) {
-      string(key.STRING)
+    if (key.SINGLE_QUOTED_STRING != null) {
+      string(key.SINGLE_QUOTED_STRING)
+    } else if (key.DOUBLE_QUOTED_STRING != null) {
+      string(key.DOUBLE_QUOTED_STRING)
     } else {
       key.getText
     }
@@ -2984,8 +2994,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitPropertyValue(value: PropertyValueContext): String = {
     if (value == null) {
       null
-    } else if (value.STRING != null) {
-      string(value.STRING)
+    } else if (value.SINGLE_QUOTED_STRING != null) {
+      string(value.SINGLE_QUOTED_STRING)
+    } else if (value.DOUBLE_QUOTED_STRING != null) {
+      string(value.DOUBLE_QUOTED_STRING)
     } else if (value.booleanValue != null) {
       value.getText.toLowerCase(Locale.ROOT)
     } else {
@@ -4421,7 +4433,11 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
         ctx.multipartIdentifier,
         "ALTER TABLE ... SET [SERDE|SERDEPROPERTIES]",
         alterTableTypeMismatchHint),
-      Option(ctx.STRING).map(string),
+      if (ctx.SINGLE_QUOTED_STRING != null) {
+        Option(ctx.SINGLE_QUOTED_STRING).map(string)
+      } else {
+        Option(ctx.DOUBLE_QUOTED_STRING).map(string)
+      },
       Option(ctx.propertyList).map(visitPropertyKeyValues),
       // TODO a partition spec is allowed to have optional values. This is currently violated.
       Option(ctx.partitionSpec).map(visitNonOptionalPartitionSpec))
@@ -4482,8 +4498,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitDescribeFunction(ctx: DescribeFunctionContext): LogicalPlan = withOrigin(ctx) {
     import ctx._
     val functionName =
-      if (describeFuncName.STRING() != null) {
-        Seq(string(describeFuncName.STRING()))
+      if (describeFuncName.SINGLE_QUOTED_STRING() != null) {
+        Seq(string(describeFuncName.SINGLE_QUOTED_STRING()))
+      } else if (describeFuncName.DOUBLE_QUOTED_STRING() != null) {
+          Seq(string(describeFuncName.DOUBLE_QUOTED_STRING()))
       } else if (describeFuncName.qualifiedName() != null) {
         visitQualifiedName(describeFuncName.qualifiedName)
       } else {
