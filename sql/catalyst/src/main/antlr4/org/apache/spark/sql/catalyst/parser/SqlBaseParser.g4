@@ -70,7 +70,7 @@ statement
     | ctes? dmlStatementNoWith                                         #dmlStatement
     | USE multipartIdentifier                                          #use
     | USE namespace multipartIdentifier                                #useNamespace
-    | SET CATALOG (identifier | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)                                #setCatalog
+    | SET CATALOG (identifier | SINGLE_QUOTED_STRING)                  #setCatalog
     | CREATE namespace (IF NOT EXISTS)? multipartIdentifier
         (commentSpec |
          locationSpec |
@@ -339,7 +339,8 @@ namespaces
 
 describeFuncName
     : qualifiedName
-    | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING
+    | SINGLE_QUOTED_STRING
+    | DOUBLE_QUOTED_STRING
     | comparisonOperator
     | arithmeticOperator
     | predicateOperator
@@ -383,14 +384,15 @@ property
 
 propertyKey
     : identifier (DOT identifier)*
-    | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING
+    | SINGLE_QUOTED_STRING
     ;
 
 propertyValue
     : INTEGER_VALUE
     | DECIMAL_VALUE
     | booleanValue
-    | SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING
+    | SINGLE_QUOTED_STRING
+    | DOUBLE_QUOTED_STRING
     ;
 
 constantList
@@ -852,7 +854,7 @@ primaryExpression
 constant
     : NULL                                                                                     #nullLiteral
     | interval                                                                                 #intervalLiteral
-    | identifier (SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)                                                                        #typeConstructor
+    | identifier (SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)                                 #typeConstructor
     | number                                                                                   #numericLiteral
     | booleanValue                                                                             #booleanLiteral
     | SINGLE_QUOTED_STRING+                                                                    #stringLiteral

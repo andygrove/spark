@@ -2195,10 +2195,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Currently Date, Timestamp, Interval and Binary typed literals are supported.
    */
   override def visitTypeConstructor(ctx: TypeConstructorContext): Literal = withOrigin(ctx) {
-    val value = if (ctx.SINGLE_QUOTED_STRING != null) {
-      string(ctx.SINGLE_QUOTED_STRING)
+    val value = if (ctx.SINGLE_QUOTED_STRING() != null) {
+      string(ctx.SINGLE_QUOTED_STRING())
     } else {
-      string(ctx.DOUBLE_QUOTED_STRING)
+      string(ctx.DOUBLE_QUOTED_STRING())
     }
     val valueType = ctx.identifier.getText.toUpperCase(Locale.ROOT)
 
@@ -2432,9 +2432,24 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    */
   private def createString(ctx: StringLiteralContext): String = {
     if (conf.escapedStringLiterals) {
-      ctx.SINGLE_QUOTED_STRING().asScala.map(stringWithoutUnescape(_)).mkString
+      ctx.SINGLE_QUOTED_STRING().asScala.map(stringWithoutUnescape).mkString
     } else {
       ctx.SINGLE_QUOTED_STRING().asScala.map(string).mkString
+    }
+  }
+
+  /**
+   * Create a String from a string literal context. This supports multiple consecutive string
+   * literals, these are concatenated, for example this expression "'hello' 'world'" will be
+   * converted into "helloworld".
+   *
+   * Special characters can be escaped by using Hive/C-style escaping.
+   */
+  private def createString(ctx: QuotedStringLiteralContext): String = {
+    if (conf.escapedStringLiterals) {
+      ctx.DOUBLE_QUOTED_STRING().asScala.map(stringWithoutUnescape).mkString
+    } else {
+      ctx.DOUBLE_QUOTED_STRING().asScala.map(string).mkString
     }
   }
 
@@ -2588,10 +2603,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
           val u = units(i).getText
           val v = if (values(i).SINGLE_QUOTED_STRING() != null ||
               values(i).DOUBLE_QUOTED_STRING() != null) {
-            val value = if (values(i).SINGLE_QUOTED_STRING != null) {
-              string(values(i).SINGLE_QUOTED_STRING)
+            val value = if (values(i).SINGLE_QUOTED_STRING() != null) {
+              string(values(i).SINGLE_QUOTED_STRING())
             } else {
-              string(values(i).DOUBLE_QUOTED_STRING)
+              string(values(i).DOUBLE_QUOTED_STRING())
             }
             // SPARK-32840: For invalid cases, e.g. INTERVAL '1 day 2' hour,
             // INTERVAL 'interval 1' day, we need to check ahead before they are concatenated with
@@ -2627,10 +2642,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    */
   override def visitUnitToUnitInterval(ctx: UnitToUnitIntervalContext): CalendarInterval = {
     withOrigin(ctx) {
-      val str = if (ctx.intervalValue.SINGLE_QUOTED_STRING != null) {
-        Option(ctx.intervalValue.SINGLE_QUOTED_STRING)
+      val str = if (ctx.intervalValue.SINGLE_QUOTED_STRING() != null) {
+        Option(ctx.intervalValue.SINGLE_QUOTED_STRING())
       } else {
-        Option(ctx.intervalValue.DOUBLE_QUOTED_STRING)
+        Option(ctx.intervalValue.DOUBLE_QUOTED_STRING())
       }
       val value = str.map(string).map { interval =>
         if (ctx.intervalValue().MINUS() == null) {
@@ -2861,10 +2876,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Create a location string.
    */
   override def visitLocationSpec(ctx: LocationSpecContext): String = withOrigin(ctx) {
-    if (ctx.SINGLE_QUOTED_STRING != null) {
-      string(ctx.SINGLE_QUOTED_STRING)
+    if (ctx.SINGLE_QUOTED_STRING() != null) {
+      string(ctx.SINGLE_QUOTED_STRING())
     } else {
-      string(ctx.DOUBLE_QUOTED_STRING)
+      string(ctx.DOUBLE_QUOTED_STRING())
     }
   }
 
@@ -2879,10 +2894,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Create a comment string.
    */
   override def visitCommentSpec(ctx: CommentSpecContext): String = withOrigin(ctx) {
-    if (ctx.SINGLE_QUOTED_STRING != null) {
-      string(ctx.SINGLE_QUOTED_STRING)
+    if (ctx.SINGLE_QUOTED_STRING() != null) {
+      string(ctx.SINGLE_QUOTED_STRING())
     } else {
-      string(ctx.DOUBLE_QUOTED_STRING)
+      string(ctx.DOUBLE_QUOTED_STRING())
     }
   }
 
@@ -2978,10 +2993,8 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * identifier.
    */
   override def visitPropertyKey(key: PropertyKeyContext): String = {
-    if (key.SINGLE_QUOTED_STRING != null) {
-      string(key.SINGLE_QUOTED_STRING)
-    } else if (key.DOUBLE_QUOTED_STRING != null) {
-      string(key.DOUBLE_QUOTED_STRING)
+    if (key.SINGLE_QUOTED_STRING() != null) {
+      string(key.SINGLE_QUOTED_STRING())
     } else {
       key.getText
     }
@@ -2994,10 +3007,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitPropertyValue(value: PropertyValueContext): String = {
     if (value == null) {
       null
-    } else if (value.SINGLE_QUOTED_STRING != null) {
-      string(value.SINGLE_QUOTED_STRING)
-    } else if (value.DOUBLE_QUOTED_STRING != null) {
-      string(value.DOUBLE_QUOTED_STRING)
+    } else if (value.SINGLE_QUOTED_STRING() != null) {
+      string(value.SINGLE_QUOTED_STRING())
+    } else if (value.DOUBLE_QUOTED_STRING() != null) {
+      string(value.DOUBLE_QUOTED_STRING())
     } else if (value.booleanValue != null) {
       value.getText.toLowerCase(Locale.ROOT)
     } else {
@@ -4433,7 +4446,7 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
         ctx.multipartIdentifier,
         "ALTER TABLE ... SET [SERDE|SERDEPROPERTIES]",
         alterTableTypeMismatchHint),
-      if (ctx.SINGLE_QUOTED_STRING != null) {
+      if (ctx.SINGLE_QUOTED_STRING() != null) {
         Option(ctx.SINGLE_QUOTED_STRING).map(string)
       } else {
         Option(ctx.DOUBLE_QUOTED_STRING).map(string)
@@ -4556,10 +4569,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitCommentNamespace(ctx: CommentNamespaceContext): LogicalPlan = withOrigin(ctx) {
     val comment = ctx.comment.getType match {
       case SqlBaseParser.NULL => ""
-      case _ => if (ctx.SINGLE_QUOTED_STRING != null) {
-        string(ctx.SINGLE_QUOTED_STRING)
+      case _ => if (ctx.SINGLE_QUOTED_STRING() != null) {
+        string(ctx.SINGLE_QUOTED_STRING())
       } else {
-        string(ctx.DOUBLE_QUOTED_STRING)
+        string(ctx.DOUBLE_QUOTED_STRING())
       }
     }
     val nameParts = visitMultipartIdentifier(ctx.multipartIdentifier)
@@ -4569,10 +4582,10 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitCommentTable(ctx: CommentTableContext): LogicalPlan = withOrigin(ctx) {
     val comment = ctx.comment.getType match {
       case SqlBaseParser.NULL => ""
-      case _ => if (ctx.SINGLE_QUOTED_STRING != null) {
-        string(ctx.SINGLE_QUOTED_STRING)
+      case _ => if (ctx.SINGLE_QUOTED_STRING() != null) {
+        string(ctx.SINGLE_QUOTED_STRING())
       } else {
-        string(ctx.DOUBLE_QUOTED_STRING)
+        string(ctx.DOUBLE_QUOTED_STRING())
       }
     }
     CommentOnTable(createUnresolvedTable(ctx.multipartIdentifier, "COMMENT ON TABLE"), comment)
