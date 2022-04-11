@@ -743,7 +743,13 @@ functionIdentifier
     ;
 
 namedExpression
-    : expression (AS? (name=errorCapturingIdentifier | identifierList))?
+    : expression (AS? (name=aliasIdentifier | identifierList))?
+    ;
+
+aliasIdentifier
+    : errorCapturingIdentifier
+    | identifierList
+    | DOUBLE_QUOTED_STRING
     ;
 
 namedExpressionSeq
@@ -857,8 +863,12 @@ constant
     | identifier (SINGLE_QUOTED_STRING | DOUBLE_QUOTED_STRING)                                 #typeConstructor
     | number                                                                                   #numericLiteral
     | booleanValue                                                                             #booleanLiteral
-    | SINGLE_QUOTED_STRING+                                                                    #stringLiteral
-    | DOUBLE_QUOTED_STRING+                                                                    #quotedStringLiteral
+    | stringValue+                                                                             #stringLiteral
+    ;
+
+stringValue
+    : SINGLE_QUOTED_STRING
+    | DOUBLE_QUOTED_STRING
     ;
 
 comparisonOperator
@@ -1030,7 +1040,6 @@ strictIdentifier
 
 quotedIdentifier
     : BACKQUOTED_IDENTIFIER
-    | DOUBLE_QUOTED_STRING
     ;
 
 number

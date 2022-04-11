@@ -2432,24 +2432,21 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    */
   private def createString(ctx: StringLiteralContext): String = {
     if (conf.escapedStringLiterals) {
-      ctx.SINGLE_QUOTED_STRING().asScala.map(stringWithoutUnescape).mkString
+      ctx.stringValue().asScala.map { stringValue =>
+        if (stringValue.SINGLE_QUOTED_STRING() != null) {
+          stringWithoutUnescape(stringValue.SINGLE_QUOTED_STRING())
+        } else {
+          stringWithoutUnescape(stringValue.DOUBLE_QUOTED_STRING())
+        }
+      }.mkString
     } else {
-      ctx.SINGLE_QUOTED_STRING().asScala.map(string).mkString
-    }
-  }
-
-  /**
-   * Create a String from a string literal context. This supports multiple consecutive string
-   * literals, these are concatenated, for example this expression "'hello' 'world'" will be
-   * converted into "helloworld".
-   *
-   * Special characters can be escaped by using Hive/C-style escaping.
-   */
-  private def createString(ctx: QuotedStringLiteralContext): String = {
-    if (conf.escapedStringLiterals) {
-      ctx.DOUBLE_QUOTED_STRING().asScala.map(stringWithoutUnescape).mkString
-    } else {
-      ctx.DOUBLE_QUOTED_STRING().asScala.map(string).mkString
+      ctx.stringValue().asScala.map { stringValue =>
+        if (stringValue.SINGLE_QUOTED_STRING() != null) {
+          string(stringValue.SINGLE_QUOTED_STRING())
+        } else {
+          string(stringValue.DOUBLE_QUOTED_STRING())
+        }
+      }.mkString
     }
   }
 
