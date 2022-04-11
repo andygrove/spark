@@ -78,6 +78,10 @@ class ExpressionParserSuite extends AnalysisTest {
     assertEqual("a.b.*", UnresolvedStar(Option(Seq("a", "b"))))
   }
 
+  test("double-quoted identifier as alias") {
+    assertEqual("1 + r.r As \"q\"", (Literal(1) + UnresolvedAttribute("r.r")).as("q"))
+  }
+
   // NamedExpression (Alias/Multialias)
   test("named expressions") {
     // No Alias

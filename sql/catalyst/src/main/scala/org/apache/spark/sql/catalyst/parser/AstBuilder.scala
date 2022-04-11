@@ -2195,7 +2195,11 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Currently Date, Timestamp, Interval and Binary typed literals are supported.
    */
   override def visitTypeConstructor(ctx: TypeConstructorContext): Literal = withOrigin(ctx) {
-    val value = string(ctx.STRING)
+    val value = if (ctx.SINGLE_QUOTED_STRING != null) {
+      string(ctx.SINGLE_QUOTED_STRING)
+    } else {
+      string(ctx.DOUBLE_QUOTED_STRING)
+    }
     val valueType = ctx.identifier.getText.toUpperCase(Locale.ROOT)
 
     def toLiteral[T](f: UTF8String => Option[T], t: DataType): Literal = {
@@ -2428,9 +2432,9 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    */
   private def createString(ctx: StringLiteralContext): String = {
     if (conf.escapedStringLiterals) {
-      ctx.STRING().asScala.map(stringWithoutUnescape).mkString
+      ctx.SINGLE_QUOTED_STRING().asScala.map(stringWithoutUnescape(_)).mkString
     } else {
-      ctx.STRING().asScala.map(string).mkString
+      ctx.SINGLE_QUOTED_STRING().asScala.map(string).mkString
     }
   }
 
@@ -2582,8 +2586,13 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
         assert(units.length == values.length)
         val kvs = units.indices.map { i =>
           val u = units(i).getText
-          val v = if (values(i).STRING() != null) {
-            val value = string(values(i).STRING())
+          val v = if (values(i).SINGLE_QUOTED_STRING() != null ||
+              values(i).DOUBLE_QUOTED_STRING() != null) {
+            val value = if (values(i).SINGLE_QUOTED_STRING != null) {
+              string(values(i).SINGLE_QUOTED_STRING)
+            } else {
+              string(values(i).DOUBLE_QUOTED_STRING)
+            }
             // SPARK-32840: For invalid cases, e.g. INTERVAL '1 day 2' hour,
             // INTERVAL 'interval 1' day, we need to check ahead before they are concatenated with
             // units and become valid ones, e.g. '1 day 2 hour'.
@@ -2618,7 +2627,12 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    */
   override def visitUnitToUnitInterval(ctx: UnitToUnitIntervalContext): CalendarInterval = {
     withOrigin(ctx) {
-      val value = Option(ctx.intervalValue.STRING).map(string).map { interval =>
+      val str = if (ctx.intervalValue.SINGLE_QUOTED_STRING != null) {
+        Option(ctx.intervalValue.SINGLE_QUOTED_STRING).map(string).map _
+      } else {
+        Option(ctx.intervalValue.DOUBLE_QUOTED_STRING).map(string).map _
+      }
+      val value = str { interval =>
         if (ctx.intervalValue().MINUS() == null) {
           interval
         } else if (interval.startsWith("-")) {
@@ -2847,7 +2861,7 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Create a location string.
    */
   override def visitLocationSpec(ctx: LocationSpecContext): String = withOrigin(ctx) {
-    string(ctx.STRING)
+    parseString(ctx)
   }
 
   /**
@@ -2861,7 +2875,7 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
    * Create a comment string.
    */
   override def visitCommentSpec(ctx: CommentSpecContext): String = withOrigin(ctx) {
-    string(ctx.STRING)
+    parseString(ctx)
   }
 
   /**
@@ -4524,7 +4538,11 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitCommentNamespace(ctx: CommentNamespaceContext): LogicalPlan = withOrigin(ctx) {
     val comment = ctx.comment.getType match {
       case SqlBaseParser.NULL => ""
-      case _ => string(ctx.STRING)
+      case _ => if (ctx.SINGLE_QUOTED_STRING != null) {
+        string(ctx.SINGLE_QUOTED_STRING)
+      } else {
+        string(ctx.DOUBLE_QUOTED_STRING)
+      }
     }
     val nameParts = visitMultipartIdentifier(ctx.multipartIdentifier)
     CommentOnNamespace(UnresolvedNamespace(nameParts), comment)
@@ -4533,7 +4551,11 @@ class AstBuilder extends SqlBaseParserBaseVisitor[AnyRef] with SQLConfHelper wit
   override def visitCommentTable(ctx: CommentTableContext): LogicalPlan = withOrigin(ctx) {
     val comment = ctx.comment.getType match {
       case SqlBaseParser.NULL => ""
-      case _ => string(ctx.STRING)
+      case _ => if (ctx.SINGLE_QUOTED_STRING != null) {
+        string(ctx.SINGLE_QUOTED_STRING)
+      } else {
+        string(ctx.DOUBLE_QUOTED_STRING)
+      }
     }
     CommentOnTable(createUnresolvedTable(ctx.multipartIdentifier, "COMMENT ON TABLE"), comment)
   }
