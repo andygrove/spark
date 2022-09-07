@@ -62,6 +62,9 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
       // We also need to check if costs of all items can be evaluated.
       if (items.size > 2 && items.size <= conf.joinReorderDPThreshold && conditions.nonEmpty &&
           items.forall(_.stats.rowCount.isDefined)) {
+        // scalastyle:off println
+        println(s"CostBasedJoinReorder.reorder() rowCounts=${items.map(_.stats.rowCount)}")
+        // scalastyle:on println
         JoinReorderDP.search(conf, items, conditions, output)
       } else {
         plan
@@ -175,8 +178,10 @@ object JoinReorderDP extends PredicateHelper with Logging {
     }
 
     val durationInMs = (System.nanoTime() - startTime) / (1000 * 1000)
-    logDebug(s"Join reordering finished. Duration: $durationInMs ms, number of items: " +
+    // scalastyle::off println
+    println(s"Join reordering finished. Duration: $durationInMs ms, number of items: " +
       s"${items.length}, number of plans in memo: ${foundPlans.map(_.size).sum}")
+    // scalastyle::on println
 
     // The last level must have one and only one plan, because all items are joinable.
     assert(foundPlans.size == items.length && foundPlans.last.size == 1)
