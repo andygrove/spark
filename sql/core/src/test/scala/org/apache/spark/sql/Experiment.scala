@@ -71,7 +71,25 @@ object Experiment {
     spark.time(df.collect())
 
     // scalastyle:off println
-    println(df.queryExecution.executedPlan)
+    val plan = df.queryExecution.executedPlan
+    println(plan)
     // scalastyle:on println
+
+    while (true) {
+      Thread.sleep(1000)
+    }
   }
+
+//  def showJoins(plan: SparkPlan, indent: String = ""): Unit = {
+//    plan match {
+//      case x: ShuffleExchangeExec =>
+//        showJoins(x.child, indent + "  ")
+//      case join: BaseJoinExec =>
+//        println(indent + join.simpleStringWithNodeId())
+//        other.children.foreach(ch => showJoins(ch, indent + "  "))
+//
+//      case other =>
+//        other.children.foreach(ch => showJoins(ch, indent + "  "))
+//    }
+//  }
 }

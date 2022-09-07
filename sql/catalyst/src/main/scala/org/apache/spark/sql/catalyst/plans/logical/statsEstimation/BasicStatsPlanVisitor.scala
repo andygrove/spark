@@ -27,16 +27,26 @@ object BasicStatsPlanVisitor extends LogicalPlanVisitor[Statistics] {
   /** Falls back to the estimation computed by [[SizeInBytesOnlyStatsPlanVisitor]]. */
   private def fallback(p: LogicalPlan): Statistics = SizeInBytesOnlyStatsPlanVisitor.visit(p)
 
-  override def default(p: LogicalPlan): Statistics = p match {
-    case p: LeafNode => p.computeStats()
-    case _: LogicalPlan =>
-      val stats = p.children.map(_.stats)
-      val rowCount = if (stats.exists(_.rowCount.isEmpty)) {
-        None
-      } else {
-        Some(stats.map(_.rowCount.get).filter(_ > 0L).product)
-      }
-      Statistics(sizeInBytes = stats.map(_.sizeInBytes).filter(_ > 0L).product, rowCount = rowCount)
+  override def default(p: LogicalPlan): Statistics = {
+    //println("[BasicStatsPlanVisitor] default()")
+    val x = p match {
+      case p: LeafNode =>
+        println(s"[BasicStatsPlanVisitor] LeafNode ${p.getClass.getName}")
+        p.computeStats()
+      case _: LogicalPlan =>
+        val stats = p.children.map(_.stats)
+        val rowCount = if (stats.exists(_.rowCount.isEmpty)) {
+          None
+        } else {
+          val rowCounts = stats.map(_.rowCount.get).filter(_ > 0L)
+          val x = rowCounts.product
+          println(s"[BasicStatsPlanVisitor] Returning product of ${rowCounts.mkString(",")} = $x")
+          Some(x)
+        }
+        Statistics(sizeInBytes = stats.map(_.sizeInBytes).filter(_ > 0L).product, rowCount = rowCount)
+    }
+    println(s"[BasicStatsPlanVisitor] default() returns $x")
+    x
   }
 
   override def visitAggregate(p: Aggregate): Statistics = {

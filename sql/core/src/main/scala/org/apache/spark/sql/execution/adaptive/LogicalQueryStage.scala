@@ -43,16 +43,19 @@ case class LogicalQueryStage(
   override protected val nodePatterns: Seq[TreePattern] = Seq(LOGICAL_QUERY_STAGE)
 
   override def computeStats(): Statistics = {
+
     // TODO this is not accurate when there is other physical nodes above QueryStageExec.
     val physicalStats = physicalPlan.collectFirst {
       case s: QueryStageExec => s
     }.flatMap(_.computeStats())
     if (physicalStats.isDefined) {
-      logDebug(s"Physical stats available as ${physicalStats.get} for plan: $physicalPlan")
+      println(s"[LogicalQueryStage] Physical stats available as ${physicalStats.get} for plan: $physicalPlan")
     } else {
-      logDebug(s"Physical stats not available for plan: $physicalPlan")
+      println(s"[LogicalQueryStage] Physical stats not available for plan: $physicalPlan")
     }
-    physicalStats.getOrElse(logicalPlan.stats)
+    val x = physicalStats.getOrElse(logicalPlan.stats)
+    println(s"[LogicalQueryStage] computeStats returning $x")
+    x
   }
 
   override def maxRows: Option[Long] = stats.rowCount.map(_.min(Long.MaxValue).toLong)

@@ -225,6 +225,8 @@ case class AdaptiveSparkPlanExec(
   private def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
     if (isFinalPlan) return currentPhysicalPlan
 
+    println("[AdaptiveSparkPlanExec] getFinalPhysicalPlan() BEGIN")
+
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
     // `plan.queryExecution.rdd`, we need to set active session here as new plan nodes can be
     // created in the middle of the execution.
@@ -238,6 +240,7 @@ case class AdaptiveSparkPlanExec(
       val errors = new mutable.ArrayBuffer[Throwable]()
       var stagesToReplace = Seq.empty[QueryStageExec]
       while (!result.allChildStagesMaterialized) {
+        println("[AdaptiveSparkPlanExec] while (!result.allChildStagesMaterialized)")
         currentPhysicalPlan = result.newPlan
         if (result.newStages.nonEmpty) {
           stagesToReplace = result.newStages ++ stagesToReplace
@@ -321,6 +324,8 @@ case class AdaptiveSparkPlanExec(
         result = createQueryStages(currentPhysicalPlan)
       }
 
+      println("[AdaptiveSparkPlanExec] getFinalPhysicalPlan() create final plan")
+
       // Run the final plan when there's no more unfinished stages.
       currentPhysicalPlan = applyPhysicalRules(
         optimizeQueryStage(result.newPlan, isFinalStage = true),
@@ -328,6 +333,9 @@ case class AdaptiveSparkPlanExec(
         Some((planChangeLogger, "AQE Post Stage Creation")))
       isFinalPlan = true
       executionId.foreach(onUpdatePlan(_, Seq(currentPhysicalPlan)))
+
+      println("[AdaptiveSparkPlanExec] getFinalPhysicalPlan() END")
+
       currentPhysicalPlan
     }
   }

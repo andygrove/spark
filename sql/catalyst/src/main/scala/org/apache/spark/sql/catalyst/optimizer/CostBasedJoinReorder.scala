@@ -36,6 +36,7 @@ import org.apache.spark.sql.internal.SQLConf
 object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
 
   def apply(plan: LogicalPlan): LogicalPlan = {
+    println(s"CostBasedJoinReorder.apply()")
     if (!conf.cboEnabled || !conf.joinReorderEnabled) {
       plan
     } else {
@@ -67,6 +68,7 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
         // scalastyle:on println
         JoinReorderDP.search(conf, items, conditions, output)
       } else {
+        println(s"CostBasedJoinReorder.reorder() could not run")
         plan
       }
     // Set consecutive join nodes ordered.
