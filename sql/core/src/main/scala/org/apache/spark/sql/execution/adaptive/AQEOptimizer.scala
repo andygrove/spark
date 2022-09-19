@@ -18,7 +18,7 @@
 package org.apache.spark.sql.execution.adaptive
 
 import org.apache.spark.sql.catalyst.analysis.UpdateAttributeNullability
-import org.apache.spark.sql.catalyst.optimizer.{ConvertToLocalRelation, CostBasedJoinReorder, EliminateLimits, OptimizeOneRowPlan}
+import org.apache.spark.sql.catalyst.optimizer.{ConvertToLocalRelation, /*CostBasedJoinReorder,*/ EliminateLimits, OptimizeOneRowPlan}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, LogicalPlanIntegrity, PlanHelper}
 import org.apache.spark.sql.catalyst.rules.{Rule, RuleExecutor}
 import org.apache.spark.sql.internal.SQLConf
@@ -43,7 +43,7 @@ class AQEOptimizer(conf: SQLConf, extendedRuntimeOptimizerRules: Seq[Rule[Logica
       UpdateAttributeNullability),
     Batch("Dynamic Join Selection", Once, DynamicJoinSelection),
     Batch("Eliminate Limits", fixedPoint, EliminateLimits),
-    Batch("Join reordering", fixedPoint, CostBasedJoinReorder),
+    //Batch("Join reordering", fixedPoint, CostBasedJoinReorder),
     Batch("Optimize One Row Plan", fixedPoint, OptimizeOneRowPlan)) :+
     Batch("User Provided Runtime Optimizers", fixedPoint, extendedRuntimeOptimizerRules: _*)
 

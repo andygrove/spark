@@ -41,13 +41,14 @@ case class LogicalRelation(
     catalogTable = None)
 
   override def computeStats(): Statistics = {
-    val x = catalogTable
+    val originalStats = catalogTable
       .flatMap(_.stats.map(_.toPlanStats(output, conf.cboEnabled || conf.planStatsEnabled)))
       .getOrElse(Statistics(sizeInBytes = relation.sizeInBytes))
 
-    val y = if (x.rowCount.isEmpty) {
+    val statsWithRowcount = if (originalStats.rowCount.isEmpty) {
       var size = 0
       for (field <- relation.schema.fields) {
+        // estimate the size of one row based on schema
         val fieldSize = field.dataType match {
           case DataTypes.ByteType | DataTypes.BooleanType => 1
           case DataTypes.ShortType => 2
@@ -59,15 +60,15 @@ case class LogicalRelation(
         }
         size += fieldSize
       }
-      new Statistics(x.sizeInBytes, Some(x.sizeInBytes / size))
-//      x
+      val estimatedRowcount = Some(originalStats.sizeInBytes / size)
+      new Statistics(originalStats.sizeInBytes, estimatedRowcount)
     } else {
-      x
+      originalStats
     }
     val location = relation.asInstanceOf[HadoopFsRelation].location
     val f = location.asInstanceOf[InMemoryFileIndex].rootPaths(0).toString()
-    println(s"[LogicalRelation] [${relation.getClass.getName}] computeStats() [$f] returning $y")
-    y
+    println(s"[LogicalRelation] [${relation.getClass.getName}] computeStats() [$f] returning $statsWithRowcount")
+    statsWithRowcount
   }
 
 
