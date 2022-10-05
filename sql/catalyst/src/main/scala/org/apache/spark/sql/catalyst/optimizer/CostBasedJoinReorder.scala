@@ -36,8 +36,8 @@ import org.apache.spark.sql.internal.SQLConf
 object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
 
   def apply(plan: LogicalPlan): LogicalPlan = {
-    println(s"CostBasedJoinReorder.apply()")
-    if (!conf.cboEnabled || !conf.joinReorderEnabled) {
+    println(s"CostBasedJoinReorder.apply() input:\n$plan")
+    val x = if (!conf.cboEnabled || !conf.joinReorderEnabled) {
       plan
     } else {
       val result = plan.transformDownWithPruning(_.containsPattern(INNER_LIKE_JOIN), ruleId) {
@@ -54,6 +54,13 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
         case OrderedJoin(left, right, jt, cond) => Join(left, right, jt, cond, JoinHint.NONE)
       }
     }
+
+    if (x.toString.contains("CartesianProduct")) {
+      throw new IllegalStateException()
+    }
+
+    println(s"CostBasedJoinReorder.apply() return:\n$x")
+    x
   }
 
   private def reorder(plan: LogicalPlan, output: Seq[Attribute]): LogicalPlan = {
