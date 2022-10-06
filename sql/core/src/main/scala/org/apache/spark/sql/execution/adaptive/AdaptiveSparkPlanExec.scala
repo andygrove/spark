@@ -258,6 +258,7 @@ case class AdaptiveSparkPlanExec(
           // Start materialization of all new stages and fail fast if any stages failed eagerly
           reorderedNewStages.foreach { stage =>
             try {
+              println(s"calling materialize on stage ${stage.id}:\n${stage.plan}")
               stage.materialize().onComplete { res =>
                 if (res.isSuccess) {
                   events.offer(StageSuccess(stage, res.get))
