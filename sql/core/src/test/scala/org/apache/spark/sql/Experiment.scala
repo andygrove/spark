@@ -20,14 +20,22 @@ import org.apache.spark.sql.internal.SQLConf
 
 object Experiment {
   def main(args: Array[String]): Unit = {
-    val spark = SparkSession.builder()
+
+    // change this variable to toggle between original Spark and POC behavior
+    val enableJoinReordingProofOfConcept = true
+
+    val baseConfig = SparkSession.builder()
       .master("local[8]")
-            .config(SQLConf.CBO_ENABLED.key, "true")
-            .config(SQLConf.JOIN_REORDER_ENABLED.key, "true")
       .config(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key, "-1")
-      .config("spark.ui.enabled", true) // http://192.168.0.80:4040/jobs/
-      .config("spark.ui.port", 4040)
-      .getOrCreate()
+
+    val spark = if (enableJoinReordingProofOfConcept) {
+      baseConfig
+        .config(SQLConf.CBO_ENABLED.key, "true")
+        .config(SQLConf.JOIN_REORDER_ENABLED.key, "true")
+        .getOrCreate()
+    } else {
+        baseConfig.getOrCreate()
+    }
 
     val tables = Seq("call_center", "catalog_sales", "customer_demographics", "date_dim",
       "household_demographics", "item", "ship_mode", "store_sales", "catalog_page",
@@ -40,7 +48,9 @@ object Experiment {
       tables.foreach(t => {
         val path = s"/mnt/bigdata/tpcds/sf1-parquet/$t"
         //      val path = s"/mnt/bigdata/tpcds/sf100-parquet/$t.parquet"
-        println(path)
+        // scalastyle::off println
+        println(s"Registering: $path")
+        // scalastyle::on println
         spark.read
           .parquet(path).createOrReplaceTempView(t)
       })

@@ -70,7 +70,9 @@ case class LogicalRelation(
     }
     val location = relation.asInstanceOf[HadoopFsRelation].location
     val f = location.asInstanceOf[InMemoryFileIndex].rootPaths(0).toString()
+    // scalastyle::off println
     println(s"[LogicalRelation] [${relation.getClass.getName}] computeStats() [$f] returning $statsWithRowcount")
+    // scalastyle::on println
     statsWithRowcount
   }
 
