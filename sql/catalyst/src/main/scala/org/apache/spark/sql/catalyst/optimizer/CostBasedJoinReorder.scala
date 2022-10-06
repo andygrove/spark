@@ -36,8 +36,7 @@ import org.apache.spark.sql.internal.SQLConf
 object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
 
   def apply(plan: LogicalPlan): LogicalPlan = {
-    println(s"CostBasedJoinReorder.apply() input:\n$plan")
-    val x = if (!conf.cboEnabled || !conf.joinReorderEnabled) {
+    if (!conf.cboEnabled || !conf.joinReorderEnabled) {
       plan
     } else {
       val result = plan.transformDownWithPruning(_.containsPattern(INNER_LIKE_JOIN), ruleId) {
@@ -54,13 +53,6 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
         case OrderedJoin(left, right, jt, cond) => Join(left, right, jt, cond, JoinHint.NONE)
       }
     }
-
-    if (x.toString.contains("CartesianProduct")) {
-      throw new IllegalStateException()
-    }
-
-    println(s"CostBasedJoinReorder.apply() return:\n$x")
-    x
   }
 
   private def reorder(plan: LogicalPlan, output: Seq[Attribute]): LogicalPlan = {
@@ -75,7 +67,10 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
         // scalastyle:on println
         JoinReorderDP.search(conf, items, conditions, output)
       } else {
-        println(s"CostBasedJoinReorder.reorder() could not run")
+        // scalastyle:off println
+        println(s"CostBasedJoinReorder.reorder() could not run, " +
+          s"probably because row counts are not available")
+        // scalastyle:on println
         plan
       }
     // Set consecutive join nodes ordered.
@@ -187,10 +182,8 @@ object JoinReorderDP extends PredicateHelper with Logging {
     }
 
     val durationInMs = (System.nanoTime() - startTime) / (1000 * 1000)
-    // scalastyle::off println
-    println(s"Join reordering finished. Duration: $durationInMs ms, number of items: " +
+    logDebug(s"Join reordering finished. Duration: $durationInMs ms, number of items: " +
       s"${items.length}, number of plans in memo: ${foundPlans.map(_.size).sum}")
-    // scalastyle::on println
 
     // The last level must have one and only one plan, because all items are joinable.
     assert(foundPlans.size == items.length && foundPlans.last.size == 1)

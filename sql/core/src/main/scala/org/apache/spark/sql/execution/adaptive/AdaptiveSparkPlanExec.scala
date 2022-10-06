@@ -19,11 +19,13 @@ package org.apache.spark.sql.execution.adaptive
 
 import java.util
 import java.util.concurrent.LinkedBlockingQueue
+
 import scala.collection.JavaConverters._
 import scala.collection.concurrent.TrieMap
 import scala.collection.mutable
 import scala.concurrent.ExecutionContext
 import scala.util.control.NonFatal
+
 import org.apache.spark.broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.SparkSession
@@ -39,7 +41,7 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanExec._
 import org.apache.spark.sql.execution.bucketing.DisableUnnecessaryBucketedScan
 import org.apache.spark.sql.execution.exchange._
-import org.apache.spark.sql.execution.ui.{SQLPlanMetric, SparkListenerSQLAdaptiveExecutionUpdate, SparkListenerSQLAdaptiveSQLMetricUpdates}
+import org.apache.spark.sql.execution.ui.{SparkListenerSQLAdaptiveExecutionUpdate, SparkListenerSQLAdaptiveSQLMetricUpdates, SQLPlanMetric}
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.{SparkFatalException, ThreadUtils}
@@ -179,12 +181,8 @@ case class AdaptiveSparkPlanExec(
   }
 
   @transient val initialPlan = context.session.withActive {
-    val x = applyPhysicalRules(
+    applyPhysicalRules(
       inputPlan, queryStagePreparationRules, Some((planChangeLogger, "AQE Preparations")))
-    if (x.toString.contains("CartesianProduct")) {
-      //throw new IllegalStateException()
-    }
-    x
   }
 
   @volatile private var currentPhysicalPlan = initialPlan
@@ -227,8 +225,6 @@ case class AdaptiveSparkPlanExec(
   private def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
     if (isFinalPlan) return currentPhysicalPlan
 
-    println("[AdaptiveSparkPlanExec] getFinalPhysicalPlan() BEGIN")
-
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
     // `plan.queryExecution.rdd`, we need to set active session here as new plan nodes can be
     // created in the middle of the execution.
@@ -237,16 +233,11 @@ case class AdaptiveSparkPlanExec(
       // Use inputPlan logicalLink here in case some top level physical nodes may be removed
       // during `initialPlan`
       var currentLogicalPlan = inputPlan.logicalLink.get
-      println("*** BEGIN currentLogicalPlan ** ")
-      println(currentLogicalPlan)
-      println("*** END currentLogicalPlan ** ")
-
       var result = createQueryStages(currentPhysicalPlan)
       val events = new LinkedBlockingQueue[StageMaterializationEvent]()
       val errors = new mutable.ArrayBuffer[Throwable]()
       var stagesToReplace = Seq.empty[QueryStageExec]
       while (!result.allChildStagesMaterialized) {
-        println("[AdaptiveSparkPlanExec] while (!result.allChildStagesMaterialized)")
         currentPhysicalPlan = result.newPlan
         if (result.newStages.nonEmpty) {
           stagesToReplace = result.newStages ++ stagesToReplace
@@ -267,25 +258,15 @@ case class AdaptiveSparkPlanExec(
           // Start materialization of all new stages and fail fast if any stages failed eagerly
           reorderedNewStages.foreach { stage =>
             try {
-              val str = stage.plan.toString
-              if (str.contains("CartesianProduct")) {
-                println(str)
-                //throw new IllegalStateException("CartesianProduct")
-              }
-
-              println(s"calling materialize on stage ${stage.id}:\n${stage.plan}")
               stage.materialize().onComplete { res =>
                 if (res.isSuccess) {
-                  println("SUCCESS")
                   events.offer(StageSuccess(stage, res.get))
                 } else {
-                  println("FAILURE")
                   events.offer(StageFailure(stage, res.failed.get))
                 }
               }(AdaptiveSparkPlanExec.executionContext)
             } catch {
               case e: Throwable =>
-                println(s"stage ${stage.id} exception: " + e.getMessage)
                 cleanUpAndThrowException(Seq(e), Some(stage.id))
             }
           }
@@ -294,17 +275,13 @@ case class AdaptiveSparkPlanExec(
         // Wait on the next completed stage, which indicates new stats are available and probably
         // new stages can be created. There might be other stages that finish at around the same
         // time, so we process those stages too in order to reduce re-planning.
-        println("waiting for next completed stage")
         val nextMsg = events.take()
-        println("got next completed stage: " + nextMsg)
         val rem = new util.ArrayList[StageMaterializationEvent]()
         events.drainTo(rem)
         (Seq(nextMsg) ++ rem.asScala).foreach {
           case StageSuccess(stage, res) =>
-            println(s"StageSuccess: ${stage.id}")
             stage.resultOption.set(Some(res))
           case StageFailure(stage, ex) =>
-            println("StageFailure")
             errors.append(ex)
         }
 
@@ -325,11 +302,7 @@ case class AdaptiveSparkPlanExec(
         // plans are updated, we can clear the query stage list because at this point the two plans
         // are semantically and physically in sync again.
         val logicalPlan = replaceWithQueryStagesInLogicalPlan(currentLogicalPlan, stagesToReplace)
-        println("before reOptimize")
         val afterReOptimize = reOptimize(logicalPlan)
-        println("after reOptimize")
-
-
         if (afterReOptimize.isDefined) {
           val (newPhysicalPlan, newLogicalPlan) = afterReOptimize.get
           val origCost = costEvaluator.evaluateCost(currentPhysicalPlan)
@@ -345,11 +318,8 @@ case class AdaptiveSparkPlanExec(
           }
         }
         // Now that some stages have finished, we can try creating new stages.
-        println("createQueryStages")
         result = createQueryStages(currentPhysicalPlan)
       }
-
-      println("[AdaptiveSparkPlanExec] getFinalPhysicalPlan() create final plan")
 
       // Run the final plan when there's no more unfinished stages.
       currentPhysicalPlan = applyPhysicalRules(
@@ -358,9 +328,6 @@ case class AdaptiveSparkPlanExec(
         Some((planChangeLogger, "AQE Post Stage Creation")))
       isFinalPlan = true
       executionId.foreach(onUpdatePlan(_, Seq(currentPhysicalPlan)))
-
-      println("[AdaptiveSparkPlanExec] getFinalPhysicalPlan() END")
-
       currentPhysicalPlan
     }
   }
@@ -374,10 +341,6 @@ case class AdaptiveSparkPlanExec(
       getExecutionId.foreach(onUpdatePlan(_, Seq.empty))
     }
     logOnLevel(s"Final plan:\n$currentPhysicalPlan")
-  }
-
-  def generateJoinOrderDot(plan: SparkPlan): Unit = {
-
   }
 
   override def executeCollect(): Array[InternalRow] = {
@@ -515,9 +478,6 @@ case class AdaptiveSparkPlanExec(
       // First have a quick check in the `stageCache` without having to traverse down the node.
       context.stageCache.get(e.canonicalized) match {
         case Some(existingStage) if conf.exchangeReuseEnabled =>
-
-          println("found cached stage")
-
           val stage = reuseQueryStage(existingStage, e)
           val isMaterialized = stage.isMaterialized
           CreateStageResult(
@@ -569,9 +529,7 @@ case class AdaptiveSparkPlanExec(
   }
 
   private def newQueryStage(e: Exchange): QueryStageExec = {
-    println(s"newQueryStage input:\n${e}")
     val optimizedPlan = optimizeQueryStage(e.child, isFinalStage = false)
-    println(s"newQueryStage optimizedPlan:\n${optimizedPlan}")
     val queryStage = e match {
       case s: ShuffleExchangeLike =>
         val newShuffle = applyPhysicalRules(
@@ -596,9 +554,6 @@ case class AdaptiveSparkPlanExec(
     }
     currentStageId += 1
     setLogicalLinkForNewQueryStage(queryStage, e)
-
-    println(s"newQueryStage returning\n${queryStage}")
-
     queryStage
   }
 
@@ -606,7 +561,6 @@ case class AdaptiveSparkPlanExec(
     val queryStage = existing.newReuseInstance(currentStageId, exchange.output)
     currentStageId += 1
     setLogicalLinkForNewQueryStage(queryStage, exchange)
-    println(s"reuseQueryStage returning\n${queryStage}")
     queryStage
   }
 
@@ -692,7 +646,6 @@ case class AdaptiveSparkPlanExec(
    * Re-optimize and run physical planning on the current logical plan based on the latest stats.
    */
   private def reOptimize(logicalPlan: LogicalPlan): Option[(SparkPlan, LogicalPlan)] = {
-    println(s"reOptimize input\n$logicalPlan")
     try {
       logicalPlan.invalidateStatsCache()
       val optimized = optimizer.execute(logicalPlan)
@@ -715,11 +668,7 @@ case class AdaptiveSparkPlanExec(
         case _ => newPlan
       }
 
-      val x = Some((finalPlan, optimized))
-
-      println(s"reOptimize returning\n$x")
-
-      x
+      Some((finalPlan, optimized))
     } catch {
       case e: InvalidAQEPlanException[_] =>
         logOnLevel(s"Re-optimize - ${e.getMessage()}:\n${e.plan}")
@@ -828,8 +777,7 @@ object AdaptiveSparkPlanExec {
       plan: SparkPlan,
       rules: Seq[Rule[SparkPlan]],
       loggerAndBatchName: Option[(PlanChangeLogger[SparkPlan], String)] = None): SparkPlan = {
-    println(s"Before applyPhysicalRules:\n${plan}")
-    val x= if (loggerAndBatchName.isEmpty) {
+    if (loggerAndBatchName.isEmpty) {
       rules.foldLeft(plan) { case (sp, rule) => rule.apply(sp) }
     } else {
       val (logger, batchName) = loggerAndBatchName.get
@@ -841,8 +789,6 @@ object AdaptiveSparkPlanExec {
       logger.logBatch(batchName, plan, newPlan)
       newPlan
     }
-    println(s"After applyPhysicalRules:\n${x}")
-    x
   }
 }
 

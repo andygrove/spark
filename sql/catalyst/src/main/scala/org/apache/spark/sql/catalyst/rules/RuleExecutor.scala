@@ -62,7 +62,7 @@ class PlanChangeLogger[TreeType <: TreeNode[_]] extends Logging {
            """.stripMargin
         }
 
-        println(message)
+        logBasedOnLevel(message)
       }
     }
   }
@@ -100,7 +100,14 @@ class PlanChangeLogger[TreeType <: TreeNode[_]] extends Logging {
   }
 
   private def logBasedOnLevel(f: => String): Unit = {
-    println(f)
+    logLevel match {
+      case "TRACE" => logTrace(f)
+      case "DEBUG" => logDebug(f)
+      case "INFO" => logInfo(f)
+      case "WARN" => logWarning(f)
+      case "ERROR" => logError(f)
+      case _ => logTrace(f)
+    }
   }
 }
 

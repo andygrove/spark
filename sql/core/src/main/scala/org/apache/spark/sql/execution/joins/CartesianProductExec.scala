@@ -62,8 +62,6 @@ case class CartesianProductExec(
     right: SparkPlan,
     condition: Option[Expression]) extends BaseJoinExec {
 
-  new RuntimeException("HERE").printStackTrace()
-
   override def joinType: JoinType = Inner
   override def leftKeys: Seq[Expression] = Nil
   override def rightKeys: Seq[Expression] = Nil
