@@ -22,13 +22,13 @@ object Experiment {
   def main(args: Array[String]): Unit = {
 
     // change this variable to toggle between original Spark and POC behavior
-    val enableJoinReordingProofOfConcept = true
+    val enableJoinReorderingProofOfConcept = true
 
     val baseConfig = SparkSession.builder()
       .master("local[8]")
       .config(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key, "-1")
 
-    val spark = if (enableJoinReordingProofOfConcept) {
+    val spark = if (enableJoinReorderingProofOfConcept) {
       baseConfig
         .config(SQLConf.CBO_ENABLED.key, "true")
         .config(SQLConf.JOIN_REORDER_ENABLED.key, "true")
