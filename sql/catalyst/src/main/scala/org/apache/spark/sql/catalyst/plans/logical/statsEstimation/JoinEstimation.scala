@@ -53,12 +53,8 @@ case class JoinEstimation(join: Join) extends Logging {
    * Estimate output size and number of rows after a join operator, and update output column stats.
    */
   private def estimateInnerOuterJoin(): Option[Statistics] = {
-
-    println(s"estimateInnerOuterJoin: $join")
-
     join match {
       case _ if !rowCountsExist(join.left, join.right) =>
-        println("estimateInnerOuterJoin None")
         None
 
       case ExtractEquiJoinKeys(joinType, leftKeys, rightKeys, _, _, _, _, _) =>
@@ -142,34 +138,28 @@ case class JoinEstimation(join: Join) extends Logging {
           }
         }
 
-        val outputAttrStats = AttributeMap(outputStats)
-
-        val stats = Statistics(
-          sizeInBytes = getOutputSize(join.output, outputRows, outputAttrStats),
-          rowCount = Some(outputRows),
-          attributeStats = outputAttrStats)
-
-        println(s"estimateInnerOuterJoin equi-join  ${stats}")
-
-        Some(stats)
+      val outputAttrStats = AttributeMap(outputStats)
+      Some(Statistics(
+        sizeInBytes = getOutputSize(join.output, outputRows, outputAttrStats),
+        rowCount = Some(outputRows),
+        attributeStats = outputAttrStats))
 
       case _ =>
         // When there is no equi-join condition, we do estimation like cartesian product.
         val inputAttrStats = AttributeMap(
           leftStats.attributeStats.toSeq ++ rightStats.attributeStats.toSeq)
         // Propagate the original column stats
+
+        // AQE POC change:
         // we really want to discourage cartesian joins / nested loop joins so lets
-        // square the result here
-        val x = leftStats.rowCount.get * rightStats.rowCount.get
-        val outputRows = x*x
-        val stats = Statistics(
+        // square the result here until we figure out a better solution
+        val cartesianProduct = leftStats.rowCount.get * rightStats.rowCount.get
+        val outputRows = cartesianProduct*cartesianProduct
+
+        Some(Statistics(
           sizeInBytes = getOutputSize(join.output, outputRows, inputAttrStats),
           rowCount = Some(outputRows),
-          attributeStats = inputAttrStats)
-
-        println(s"estimateInnerOuterJoin non equi-join: ${stats}")
-
-        Some(stats)
+          attributeStats = inputAttrStats))
     }
   }
 

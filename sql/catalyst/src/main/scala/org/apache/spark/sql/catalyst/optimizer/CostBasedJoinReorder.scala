@@ -62,15 +62,8 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
       // We also need to check if costs of all items can be evaluated.
       if (items.size > 2 && items.size <= conf.joinReorderDPThreshold && conditions.nonEmpty &&
           items.forall(_.stats.rowCount.isDefined)) {
-        // scalastyle:off println
-        println(s"CostBasedJoinReorder.reorder() rowCounts=${items.map(_.stats.rowCount)}")
-        // scalastyle:on println
         JoinReorderDP.search(conf, items, conditions, output)
       } else {
-        // scalastyle:off println
-        println(s"CostBasedJoinReorder.reorder() could not run, " +
-          s"probably because row counts are not available")
-        // scalastyle:on println
         plan
       }
     // Set consecutive join nodes ordered.

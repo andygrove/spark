@@ -45,6 +45,9 @@ case class LogicalRelation(
       .flatMap(_.stats.map(_.toPlanStats(output, conf.cboEnabled || conf.planStatsEnabled)))
       .getOrElse(Statistics(sizeInBytes = relation.sizeInBytes))
 
+    // AQE POC change:
+    // JoinReordering requires row count statistics so we estimate the row count
+    // based on schema and data size
     val statsWithRowcount = if (originalStats.rowCount.isEmpty) {
       var size = 0
       for (field <- relation.schema.fields) {

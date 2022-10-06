@@ -43,7 +43,11 @@ class AQEOptimizer(conf: SQLConf, extendedRuntimeOptimizerRules: Seq[Rule[Logica
       UpdateAttributeNullability),
     Batch("Dynamic Join Selection", Once, DynamicJoinSelection),
     Batch("Eliminate Limits", fixedPoint, EliminateLimits),
+
+    // AQE POC change:
+    // Include join reordering in AQE optimizations
     Batch("Join reordering", fixedPoint, CostBasedJoinReorder),
+
     Batch("Optimize One Row Plan", fixedPoint, OptimizeOneRowPlan)) :+
     Batch("User Provided Runtime Optimizers", fixedPoint, extendedRuntimeOptimizerRules: _*)
 

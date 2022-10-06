@@ -22,8 +22,8 @@ object Experiment {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder()
       .master("local[8]")
-      //      .config(SQLConf.CBO_ENABLED.key, "true")
-      //      .config(SQLConf.JOIN_REORDER_ENABLED.key, "true")
+            .config(SQLConf.CBO_ENABLED.key, "true")
+            .config(SQLConf.JOIN_REORDER_ENABLED.key, "true")
       .config(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key, "-1")
       .config("spark.ui.enabled", true) // http://192.168.0.80:4040/jobs/
       .config("spark.ui.port", 4040)
@@ -35,17 +35,21 @@ object Experiment {
       "catalog_returns", "customer", "inventory", "reason", "store_returns", "warehouse",
       "web_sales", "web_page", "web_site")
 
-    tables.foreach(t => {
-      val path = s"/mnt/bigdata/tpcds/sf1-parquet/$t"
-      //      val path = s"/mnt/bigdata/tpcds/sf100-parquet/$t.parquet"
-      println(path)
-      spark.read
-        .parquet(path).createOrReplaceTempView(t)
-    })
+    // table registratrion
+    spark.time {
+      tables.foreach(t => {
+        val path = s"/mnt/bigdata/tpcds/sf1-parquet/$t"
+        //      val path = s"/mnt/bigdata/tpcds/sf100-parquet/$t.parquet"
+        println(path)
+        spark.read
+          .parquet(path).createOrReplaceTempView(t)
+      })
+    }
 
-    val df = spark.sql(q72)
+    // intial planning
+    val df = spark.time(spark.sql(q72))
 
-    //    spark.time(df.write.mode(SaveMode.Overwrite).parquet("/tmp/q72result.parquet"))
+    // execution
     spark.time(df.collect())
 
     // scalastyle:off println
@@ -54,9 +58,9 @@ object Experiment {
     // scalastyle:on println
 
     // keep Spark web UI alive so I can view the plan
-    while (true) {
-      Thread.sleep(1000)
-    }
+//    while (true) {
+//      Thread.sleep(1000)
+//    }
   }
 
   val q72 =
@@ -88,7 +92,7 @@ object Experiment {
   order by total_cnt desc, i_item_desc, w_warehouse_name, d_week_seq
       LIMIT 100"""
 
-  val handTunedSql =
+  val q72handTunedByMatt =
     """
       |select  i_item_desc
       |      ,w_warehouse_name

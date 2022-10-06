@@ -155,11 +155,7 @@ case class ShuffleExchangeExec(
   override def runtimeStatistics: Statistics = {
     val dataSize = metrics("dataSize").value
     val rowCount = metrics(SQLShuffleWriteMetricsReporter.SHUFFLE_RECORDS_WRITTEN).value
-    val x = Statistics(dataSize, Some(rowCount))
-    // scalastyle:off println
-    println(s"ShuffleExchangeExec.runtimeStatistics=$x")
-    // scalastyle:on println
-    x
+    Statistics(dataSize, Some(rowCount))
   }
 
   /**
