@@ -22,9 +22,11 @@ object Experiment {
   def main(args: Array[String]): Unit = {
     val spark = SparkSession.builder()
       .master("local[8]")
-      .config(SQLConf.CBO_ENABLED.key, "true")
-      .config(SQLConf.JOIN_REORDER_ENABLED.key, "true")
+//      .config(SQLConf.CBO_ENABLED.key, "true")
+//      .config(SQLConf.JOIN_REORDER_ENABLED.key, "true")
       .config(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key, "-1")
+      .config("spark.ui.enabled", true) // http://192.168.0.80:4040/jobs/
+      .config("spark.ui.port", 4040)
       .getOrCreate()
 
     val tables = Seq("call_center", "catalog_sales", "customer_demographics", "date_dim",
@@ -35,6 +37,7 @@ object Experiment {
 
     tables.foreach(t => {
       val path = s"/mnt/bigdata/tpcds/sf1-parquet/$t"
+//      val path = s"/mnt/bigdata/tpcds/sf100-parquet/$t.parquet"
       println(path)
       spark.read
         .parquet(path).createOrReplaceTempView(t)
@@ -109,9 +112,9 @@ object Experiment {
     println(plan)
     // scalastyle:on println
 
-//    while (true) {
-//      Thread.sleep(1000)
-//    }
+    while (true) {
+      Thread.sleep(1000)
+    }
   }
 
 //  def showJoins(plan: SparkPlan, indent: String = ""): Unit = {

@@ -52,107 +52,125 @@ case class JoinEstimation(join: Join) extends Logging {
   /**
    * Estimate output size and number of rows after a join operator, and update output column stats.
    */
-  private def estimateInnerOuterJoin(): Option[Statistics] = join match {
-    case _ if !rowCountsExist(join.left, join.right) =>
-      None
+  private def estimateInnerOuterJoin(): Option[Statistics] = {
 
-    case ExtractEquiJoinKeys(joinType, leftKeys, rightKeys, _, _, _, _, _) =>
-      // 1. Compute join selectivity
-      val joinKeyPairs = extractJoinKeysWithColStats(leftKeys, rightKeys)
-      val (numInnerJoinedRows, keyStatsAfterJoin) = computeCardinalityAndStats(joinKeyPairs)
+    println(s"estimateInnerOuterJoin: $join")
 
-      // 2. Estimate the number of output rows
-      val leftRows = leftStats.rowCount.get
-      val rightRows = rightStats.rowCount.get
+    join match {
+      case _ if !rowCountsExist(join.left, join.right) =>
+        println("estimateInnerOuterJoin None")
+        None
 
-      // Make sure outputRows won't be too small based on join type.
-      val outputRows = joinType match {
-        case LeftOuter =>
-          // All rows from left side should be in the result.
-          leftRows.max(numInnerJoinedRows)
-        case RightOuter =>
-          // All rows from right side should be in the result.
-          rightRows.max(numInnerJoinedRows)
-        case FullOuter =>
-          // T(A FOJ B) = T(A LOJ B) + T(A ROJ B) - T(A IJ B)
-          leftRows.max(numInnerJoinedRows) + rightRows.max(numInnerJoinedRows) - numInnerJoinedRows
-        case _ =>
-          assert(joinType == Inner || joinType == Cross)
-          // Don't change for inner or cross join
-          numInnerJoinedRows
-      }
+      case ExtractEquiJoinKeys(joinType, leftKeys, rightKeys, _, _, _, _, _) =>
+        // 1. Compute join selectivity
+        val joinKeyPairs = extractJoinKeysWithColStats(leftKeys, rightKeys)
+        val (numInnerJoinedRows, keyStatsAfterJoin) = computeCardinalityAndStats(joinKeyPairs)
 
-      // 3. Update statistics based on the output of join
-      val inputAttrStats = AttributeMap(
-        leftStats.attributeStats.toSeq ++ rightStats.attributeStats.toSeq)
-      val attributesWithStat = join.output.filter(a =>
-        inputAttrStats.get(a).map(_.hasCountStats).getOrElse(false))
-      val (fromLeft, fromRight) = attributesWithStat.partition(join.left.outputSet.contains(_))
+        // 2. Estimate the number of output rows
+        val leftRows = leftStats.rowCount.get
+        val rightRows = rightStats.rowCount.get
 
-      val outputStats: Seq[(Attribute, ColumnStat)] = if (outputRows == 0) {
-        // The output is empty, we don't need to keep column stats.
-        Nil
-      } else if (numInnerJoinedRows == 0) {
-        joinType match {
-          // For outer joins, if the join selectivity is 0, the number of output rows is the
-          // same as that of the outer side. And column stats of join keys from the outer side
-          // keep unchanged, while column stats of join keys from the other side should be updated
-          // based on added null values.
+        // Make sure outputRows won't be too small based on join type.
+        val outputRows = joinType match {
           case LeftOuter =>
-            fromLeft.map(a => (a, inputAttrStats(a))) ++
-              fromRight.map(a => (a, nullColumnStat(a.dataType, leftRows)))
+            // All rows from left side should be in the result.
+            leftRows.max(numInnerJoinedRows)
           case RightOuter =>
-            fromRight.map(a => (a, inputAttrStats(a))) ++
-              fromLeft.map(a => (a, nullColumnStat(a.dataType, rightRows)))
+            // All rows from right side should be in the result.
+            rightRows.max(numInnerJoinedRows)
           case FullOuter =>
-            fromLeft.map { a =>
-              val oriColStat = inputAttrStats(a)
-              (a, oriColStat.copy(nullCount = Some(oriColStat.nullCount.get + rightRows)))
-            } ++ fromRight.map { a =>
-              val oriColStat = inputAttrStats(a)
-              (a, oriColStat.copy(nullCount = Some(oriColStat.nullCount.get + leftRows)))
-            }
+            // T(A FOJ B) = T(A LOJ B) + T(A ROJ B) - T(A IJ B)
+            leftRows.max(numInnerJoinedRows) + rightRows.max(numInnerJoinedRows) - numInnerJoinedRows
           case _ =>
             assert(joinType == Inner || joinType == Cross)
-            Nil
+            // Don't change for inner or cross join
+            numInnerJoinedRows
         }
-      } else if (numInnerJoinedRows == leftRows * rightRows) {
-        // Cartesian product, just propagate the original column stats
-        inputAttrStats.toSeq
-      } else {
-        join.joinType match {
-          // For outer joins, don't update column stats from the outer side.
-          case LeftOuter =>
-            fromLeft.map(a => (a, inputAttrStats(a))) ++
-              updateOutputStats(outputRows, fromRight, inputAttrStats, keyStatsAfterJoin)
-          case RightOuter =>
-            updateOutputStats(outputRows, fromLeft, inputAttrStats, keyStatsAfterJoin) ++
-              fromRight.map(a => (a, inputAttrStats(a)))
-          case FullOuter =>
-            inputAttrStats.toSeq
-          case _ =>
-            assert(joinType == Inner || joinType == Cross)
-            // Update column stats from both sides for inner or cross join.
-            updateOutputStats(outputRows, attributesWithStat, inputAttrStats, keyStatsAfterJoin)
+
+        // 3. Update statistics based on the output of join
+        val inputAttrStats = AttributeMap(
+          leftStats.attributeStats.toSeq ++ rightStats.attributeStats.toSeq)
+        val attributesWithStat = join.output.filter(a =>
+          inputAttrStats.get(a).map(_.hasCountStats).getOrElse(false))
+        val (fromLeft, fromRight) = attributesWithStat.partition(join.left.outputSet.contains(_))
+
+        val outputStats: Seq[(Attribute, ColumnStat)] = if (outputRows == 0) {
+          // The output is empty, we don't need to keep column stats.
+          Nil
+        } else if (numInnerJoinedRows == 0) {
+          joinType match {
+            // For outer joins, if the join selectivity is 0, the number of output rows is the
+            // same as that of the outer side. And column stats of join keys from the outer side
+            // keep unchanged, while column stats of join keys from the other side should be updated
+            // based on added null values.
+            case LeftOuter =>
+              fromLeft.map(a => (a, inputAttrStats(a))) ++
+                fromRight.map(a => (a, nullColumnStat(a.dataType, leftRows)))
+            case RightOuter =>
+              fromRight.map(a => (a, inputAttrStats(a))) ++
+                fromLeft.map(a => (a, nullColumnStat(a.dataType, rightRows)))
+            case FullOuter =>
+              fromLeft.map { a =>
+                val oriColStat = inputAttrStats(a)
+                (a, oriColStat.copy(nullCount = Some(oriColStat.nullCount.get + rightRows)))
+              } ++ fromRight.map { a =>
+                val oriColStat = inputAttrStats(a)
+                (a, oriColStat.copy(nullCount = Some(oriColStat.nullCount.get + leftRows)))
+              }
+            case _ =>
+              assert(joinType == Inner || joinType == Cross)
+              Nil
+          }
+        } else if (numInnerJoinedRows == leftRows * rightRows) {
+          // Cartesian product, just propagate the original column stats
+          inputAttrStats.toSeq
+        } else {
+          join.joinType match {
+            // For outer joins, don't update column stats from the outer side.
+            case LeftOuter =>
+              fromLeft.map(a => (a, inputAttrStats(a))) ++
+                updateOutputStats(outputRows, fromRight, inputAttrStats, keyStatsAfterJoin)
+            case RightOuter =>
+              updateOutputStats(outputRows, fromLeft, inputAttrStats, keyStatsAfterJoin) ++
+                fromRight.map(a => (a, inputAttrStats(a)))
+            case FullOuter =>
+              inputAttrStats.toSeq
+            case _ =>
+              assert(joinType == Inner || joinType == Cross)
+              // Update column stats from both sides for inner or cross join.
+              updateOutputStats(outputRows, attributesWithStat, inputAttrStats, keyStatsAfterJoin)
+          }
         }
-      }
 
-      val outputAttrStats = AttributeMap(outputStats)
-      Some(Statistics(
-        sizeInBytes = getOutputSize(join.output, outputRows, outputAttrStats),
-        rowCount = Some(outputRows),
-        attributeStats = outputAttrStats))
+        val outputAttrStats = AttributeMap(outputStats)
 
-    case _ =>
-      // When there is no equi-join condition, we do estimation like cartesian product.
-      val inputAttrStats = AttributeMap(
-        leftStats.attributeStats.toSeq ++ rightStats.attributeStats.toSeq)
-      // Propagate the original column stats
-      val outputRows = leftStats.rowCount.get * rightStats.rowCount.get
-      Some(Statistics(
-        sizeInBytes = getOutputSize(join.output, outputRows, inputAttrStats),
-        rowCount = Some(outputRows),
-        attributeStats = inputAttrStats))
+        val stats = Statistics(
+          sizeInBytes = getOutputSize(join.output, outputRows, outputAttrStats),
+          rowCount = Some(outputRows),
+          attributeStats = outputAttrStats)
+
+        println(s"estimateInnerOuterJoin equi-join  ${stats}")
+
+        Some(stats)
+
+      case _ =>
+        // When there is no equi-join condition, we do estimation like cartesian product.
+        val inputAttrStats = AttributeMap(
+          leftStats.attributeStats.toSeq ++ rightStats.attributeStats.toSeq)
+        // Propagate the original column stats
+        // we really want to discourage cartesian joins / nested loop joins so lets
+        // square the result here
+        val x = leftStats.rowCount.get * rightStats.rowCount.get
+        val outputRows = x*x
+        val stats = Statistics(
+          sizeInBytes = getOutputSize(join.output, outputRows, inputAttrStats),
+          rowCount = Some(outputRows),
+          attributeStats = inputAttrStats)
+
+        println(s"estimateInnerOuterJoin non equi-join: ${stats}")
+
+        Some(stats)
+    }
   }
 
   // scalastyle:off
