@@ -46,8 +46,8 @@ object Experiment {
     // table registratrion
     spark.time {
       tables.foreach(t => {
-        val path = s"/mnt/bigdata/tpcds/sf1-parquet/$t"
-        //      val path = s"/mnt/bigdata/tpcds/sf100-parquet/$t.parquet"
+//        val path = s"/mnt/bigdata/tpcds/sf1-parquet/$t"
+              val path = s"/mnt/bigdata/tpcds/sf100-parquet/$t.parquet"
         // scalastyle::off println
         println(s"Registering: $path")
         // scalastyle::on println
@@ -66,6 +66,9 @@ object Experiment {
     val plan = df.queryExecution.executedPlan
     println(plan)
     // scalastyle:on println
+
+    // generate a simplified DOT graph showing the join order
+    new SparkDot(df.queryExecution.executedPlan).generate("final.dot")
 
     // keep Spark web UI alive so I can view the plan
 //    while (true) {
