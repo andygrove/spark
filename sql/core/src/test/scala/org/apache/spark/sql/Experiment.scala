@@ -48,9 +48,9 @@ object Experiment {
       tables.foreach(t => {
 //        val path = s"/mnt/bigdata/tpcds/sf1-parquet/$t"
               val path = s"/mnt/bigdata/tpcds/sf100-parquet/$t.parquet"
-        // scalastyle::off println
+        // scalastyle:off println
         println(s"Registering: $path")
-        // scalastyle::on println
+        // scalastyle:on println
         spark.read
           .parquet(path).createOrReplaceTempView(t)
       })

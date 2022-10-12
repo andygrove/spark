@@ -1,3 +1,20 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.apache.spark.sql
 
 import org.apache.spark.sql.execution.adaptive.{AQEShuffleReadExec, AdaptiveSparkPlanExec, QueryStageExec}
@@ -15,7 +32,6 @@ class SparkDot(plan: SparkPlan) {
     // build list of query stages
     val stages = new ListBuffer[QueryStageExec]()
     def findQueryStages(plan: SparkPlan): Unit = {
-//      println(s"findQueryStages: ${plan.getClass} with ${plan.children.length} children")
       plan match {
         case p: AdaptiveSparkPlanExec => findQueryStages(p.executedPlan)
         case p: QueryStageExec =>
@@ -26,7 +42,6 @@ class SparkDot(plan: SparkPlan) {
       }
     }
     findQueryStages(plan)
-//    println(s"found ${stages.length} query stages")
 
     println(s"Writing $filename")
     val w = new BufferedWriter(new FileWriter(filename))
@@ -37,8 +52,6 @@ class SparkDot(plan: SparkPlan) {
 
     // generate links
     def generateLinks(plan: SparkPlan, shuffleReadId: Option[Int]): Unit = {
-//      println(s"generateLinks: ${plan.getClass} id=${plan.id} shuffleReadId=$shuffleReadId")
-
       plan match {
         case p: AdaptiveSparkPlanExec =>
           generateLinks(p.executedPlan, shuffleReadId)
@@ -64,15 +77,11 @@ class SparkDot(plan: SparkPlan) {
     w.write("// final part of plan\n")
     generate(w, plan)
 
-
-
     w.write("}\n")
     w.close()
   }
 
   def generate(w: BufferedWriter, plan: SparkPlan): Unit = {
-    println(s"SparkDot.generate: ${plan.getClass}")
-
     // TODO subqueries in projections and filters
 
     plan match {
@@ -109,7 +118,8 @@ class SparkDot(plan: SparkPlan) {
     nextCluster += 1
     w.write(s"// Query Stage id=${queryStage.id}; ${queryStage.simpleStringWithNodeId()}\n")
     w.write(s"subgraph cluster$clusterId {\n")
-    val label = s"${queryStage.nodeName}\nThis stage produced ${queryStage.getRuntimeStatistics.rowCount.getOrElse(-1)} rows."
+    val label = s"${queryStage.nodeName}\nThis stage produced " +
+      s"${queryStage.getRuntimeStatistics.rowCount.getOrElse(-1)} rows."
     w.write(s"""label = "$label";\n""")
     generate(w, queryStage.plan)
 
