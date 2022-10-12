@@ -28,7 +28,7 @@ import scala.util.control.NonFatal
 
 import org.apache.spark.broadcast
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{SparkDot, SparkSession}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Attribute
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, ReturnAnswer}
@@ -256,8 +256,9 @@ case class AdaptiveSparkPlanExec(
           // Start materialization of all new stages and fail fast if any stages failed eagerly
           reorderedNewStages.foreach { stage =>
             try {
+              // scalastyle:off println
               println(s"calling materialize on stage ${stage.id}:\n${stage.plan}")
-              new SparkDot(stage.plan).generate(s"stage_${stage.id}.dot")
+              // scalastyle:on println
               stage.materialize().onComplete { res =>
                 if (res.isSuccess) {
                   events.offer(StageSuccess(stage, res.get))

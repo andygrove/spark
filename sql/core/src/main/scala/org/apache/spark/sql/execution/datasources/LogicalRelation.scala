@@ -21,7 +21,7 @@ import org.apache.spark.sql.catalyst.catalog.CatalogTable
 import org.apache.spark.sql.catalyst.expressions.{AttributeMap, AttributeReference}
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.logical.{ExposesMetadataColumns, LeafNode, LogicalPlan, Statistics}
-import org.apache.spark.sql.catalyst.util.{CharVarcharUtils, truncatedString}
+import org.apache.spark.sql.catalyst.util.{truncatedString, CharVarcharUtils}
 import org.apache.spark.sql.sources.BaseRelation
 import org.apache.spark.sql.types.DataTypes
 
@@ -71,7 +71,8 @@ case class LogicalRelation(
     val location = relation.asInstanceOf[HadoopFsRelation].location
     val f = location.asInstanceOf[InMemoryFileIndex].rootPaths(0).toString()
     // scalastyle:off println
-    println(s"[LogicalRelation] [${relation.getClass.getName}] computeStats() [$f] returning $statsWithRowcount")
+    println(s"[LogicalRelation] [${relation.getClass.getName}] " +
+      s"computeStats() [$f] returning $statsWithRowcount")
     // scalastyle:on println
     statsWithRowcount
   }
