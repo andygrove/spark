@@ -206,7 +206,31 @@
     <outputDirectory>target/scala-${scala.binary.version}/classes</outputDirectory>
     <testOutputDirectory>target/scala-${scala.binary.version}/test-classes</testOutputDirectory>
     <plugins>
-       <!--
+      <plugin>
+        <groupId>net.alchim31.maven</groupId>
+        <artifactId>scala-maven-plugin</artifactId>
+        <version>4.7.1</version>
+        <configuration>
+          <launchers>
+            <launcher>
+              <id>experiment</id>
+              <mainClass>org.apache.spark.sql.Experiment</mainClass>
+              <!-- args are optional -->
+              <args>
+                <arg>arg1</arg>
+              </args>
+              <!-- jvmArgs are optional -->
+              <jvmArgs>
+                <jvmArg>-Xms1g</jvmArg>
+                <jvmArg>-Xmx2g</jvmArg>
+                <!--                <jvmArg>-Djava.library.path=...</jvmArg>-->
+              </jvmArgs>
+            </launcher>
+            <!-- you could define other launcher -->
+          </launchers>
+        </configuration>
+      </plugin>
+      <!--
             This plugin forces the generation of jar containing sql test classes,
             so that the tests classes of external modules can use them. The two execution profiles
             are necessary - first one for 'mvn package', second one for 'mvn test-compile'. Ideally,

@@ -40,9 +40,39 @@ case class LogicalRelation(
     catalogTable = None)
 
   override def computeStats(): Statistics = {
-    catalogTable
+    val originalStats = catalogTable
       .flatMap(_.stats.map(_.toPlanStats(output, conf.cboEnabled || conf.planStatsEnabled)))
       .getOrElse(Statistics(sizeInBytes = relation.sizeInBytes))
+
+    // AQE POC change:
+    // JoinReordering requires row count statistics so we estimate the row count
+    // based on schema and data size
+    val statsWithRowcount = if (originalStats.rowCount.isEmpty) {
+      var size = 0
+      for (field <- relation.schema.fields) {
+        // estimate the size of one row based on schema
+        val fieldSize = field.dataType match {
+          case DataTypes.ByteType | DataTypes.BooleanType => 1
+          case DataTypes.ShortType => 2
+          case DataTypes.IntegerType | DataTypes.FloatType => 4
+          case DataTypes.LongType | DataTypes.DoubleType => 8
+          case DataTypes.StringType => 50
+          case DataTypes.DateType | DataTypes.TimestampType => 8
+          case _ => 20
+        }
+        size += fieldSize
+      }
+      val estimatedRowcount = Some(originalStats.sizeInBytes / size)
+      new Statistics(originalStats.sizeInBytes, estimatedRowcount)
+    } else {
+      originalStats
+    }
+    val location = relation.asInstanceOf[HadoopFsRelation].location
+    val f = location.asInstanceOf[InMemoryFileIndex].rootPaths(0).toString()
+    // scalastyle:off println
+    println(s"[LogicalRelation] [${relation.getClass.getName}] computeStats() [$f] returning $statsWithRowcount")
+    // scalastyle:on println
+    statsWithRowcount
   }
 
   /** Used to lookup original attribute capitalization */
