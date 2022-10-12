@@ -21,7 +21,8 @@ import org.apache.spark.sql.catalyst.catalog.CatalogTable
 import org.apache.spark.sql.catalyst.expressions.{AttributeMap, AttributeReference}
 import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.logical.{ExposesMetadataColumns, LeafNode, LogicalPlan, Statistics}
-import org.apache.spark.sql.catalyst.util.{truncatedString, CharVarcharUtils}
+import org.apache.spark.sql.catalyst.util.{CharVarcharUtils, truncatedString}
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources.BaseRelation
 import org.apache.spark.sql.types.DataTypes
 
@@ -45,26 +46,30 @@ case class LogicalRelation(
       .flatMap(_.stats.map(_.toPlanStats(output, conf.cboEnabled || conf.planStatsEnabled)))
       .getOrElse(Statistics(sizeInBytes = relation.sizeInBytes))
 
-    // AQE POC change:
-    // JoinReordering requires row count statistics so we estimate the row count
-    // based on schema and data size
-    val statsWithRowcount = if (originalStats.rowCount.isEmpty) {
-      var size = 0
-      for (field <- relation.schema.fields) {
-        // estimate the size of one row based on schema
-        val fieldSize = field.dataType match {
-          case DataTypes.ByteType | DataTypes.BooleanType => 1
-          case DataTypes.ShortType => 2
-          case DataTypes.IntegerType | DataTypes.FloatType => 4
-          case DataTypes.LongType | DataTypes.DoubleType => 8
-          case DataTypes.StringType => 50
-          case DataTypes.DateType | DataTypes.TimestampType => 8
-          case _ => 20
+    val statsWithRowcount = if (SQLConf.get.getConf(SQLConf.CBO_ENABLED)) {
+      // AQE POC change:
+      // JoinReordering requires row count statistics so we estimate the row count
+      // based on schema and data size
+      if (originalStats.rowCount.isEmpty) {
+        var size = 0
+        for (field <- relation.schema.fields) {
+          // estimate the size of one row based on schema
+          val fieldSize = field.dataType match {
+            case DataTypes.ByteType | DataTypes.BooleanType => 1
+            case DataTypes.ShortType => 2
+            case DataTypes.IntegerType | DataTypes.FloatType => 4
+            case DataTypes.LongType | DataTypes.DoubleType => 8
+            case DataTypes.StringType => 50
+            case DataTypes.DateType | DataTypes.TimestampType => 8
+            case _ => 20
+          }
+          size += fieldSize
         }
-        size += fieldSize
+        val estimatedRowcount = Some(originalStats.sizeInBytes / size)
+        new Statistics(originalStats.sizeInBytes, estimatedRowcount)
+      } else {
+        originalStats
       }
-      val estimatedRowcount = Some(originalStats.sizeInBytes / size)
-      new Statistics(originalStats.sizeInBytes, estimatedRowcount)
     } else {
       originalStats
     }
