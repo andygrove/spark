@@ -51,8 +51,9 @@ case class LogicalRelation(
     // start executing. There is currently no way for us to do this without changes in Spark
     // though
 
-    val enableLogicalRelationStats = sys.env.getOrElse(
-      "SPARK_ENABLE_LOGICAL_RELATION_STATS", "false").toBoolean
+    val enableLogicalRelationStats = true
+//    sys.env.getOrElse(
+//      "SPARK_ENABLE_LOGICAL_RELATION_STATS", "false").toBoolean
 
     // scalastyle:off println
     println(s"enableLogicalRelationStats = $enableLogicalRelationStats")
