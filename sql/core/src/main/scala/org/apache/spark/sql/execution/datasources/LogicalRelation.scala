@@ -46,7 +46,20 @@ case class LogicalRelation(
       .flatMap(_.stats.map(_.toPlanStats(output, conf.cboEnabled || conf.planStatsEnabled)))
       .getOrElse(Statistics(sizeInBytes = relation.sizeInBytes))
 
-    val statsWithRowcount = if (SQLConf.get.getConf(SQLConf.CBO_ENABLED)) {
+    // AQE POC change:
+    // this is a separate experiment that is not essential for enabling join-reordering in AQE
+    // but enabling this means that we get to apply join-reordering before any query stages
+    // start executing. There is currently no way for us to do this without changes in Spark
+    // though
+
+    val enableLogicalRelationStats = sys.env.getOrElse(
+      "SPARK_ENABLE_LOGICAL_RELATION_STATS", "false").toBoolean
+
+    // scalastyle:off println
+    println(s"enableLogicalRelationStats = $enableLogicalRelationStats")
+    // scalastyle:on println
+
+    val statsWithRowcount = if (enableLogicalRelationStats) {
       // AQE POC change:
       // JoinReordering requires row count statistics so we estimate the row count
       // based on schema and data size
@@ -75,10 +88,13 @@ case class LogicalRelation(
     }
     val location = relation.asInstanceOf[HadoopFsRelation].location
     val f = location.asInstanceOf[InMemoryFileIndex].rootPaths(0).toString()
+
+    // AQE POC change: debug logging
     // scalastyle:off println
     println(s"[LogicalRelation] [${relation.getClass.getName}] " +
       s"computeStats() [$f] returning $statsWithRowcount")
     // scalastyle:on println
+
     statsWithRowcount
   }
 

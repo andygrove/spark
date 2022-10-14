@@ -256,6 +256,7 @@ case class AdaptiveSparkPlanExec(
           // Start materialization of all new stages and fail fast if any stages failed eagerly
           reorderedNewStages.foreach { stage =>
             try {
+              // AQE POC change: debug logging
               // scalastyle:off println
               println(s"calling materialize on stage ${stage.id}:\n${stage.plan}")
               // scalastyle:on println

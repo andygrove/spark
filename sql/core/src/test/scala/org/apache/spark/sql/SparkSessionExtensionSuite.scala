@@ -17,7 +17,9 @@
 package org.apache.spark.sql
 
 import java.util.{Locale, UUID}
+
 import scala.concurrent.Future
+
 import org.apache.spark.{MapOutputStatistics, SparkFunSuite, TaskContext}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
@@ -25,8 +27,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.{FunctionIdentifier, InternalRow, TableIdentifier}
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.parser.{CatalystSqlParser, ParserInterface}
-import org.apache.spark.sql.catalyst.plans.SQLHelper
-import org.apache.spark.sql.catalyst.plans.logical.{Limit, LocalRelation, LogicalPlan, Statistics, UnresolvedHint}
+import org.apache.spark.sql.catalyst.plans.logical.{LocalRelation, LogicalPlan, Statistics, UnresolvedHint}
 import org.apache.spark.sql.catalyst.plans.physical.Partitioning
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.catalyst.trees.TreeNodeTag
@@ -38,13 +39,13 @@ import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.internal.SQLConf.COLUMN_BATCH_SIZE
 import org.apache.spark.sql.internal.StaticSQLConf.SPARK_SESSION_EXTENSIONS
 import org.apache.spark.sql.types.{DataType, Decimal, IntegerType, LongType, Metadata, StructType}
-import org.apache.spark.sql.vectorized.{ColumnVector, ColumnarArray, ColumnarBatch, ColumnarMap}
+import org.apache.spark.sql.vectorized.{ColumnarArray, ColumnarBatch, ColumnarMap, ColumnVector}
 import org.apache.spark.unsafe.types.UTF8String
 
 /**
  * Test cases for the [[SparkSessionExtensions]].
  */
-class SparkSessionExtensionSuite extends SparkFunSuite with SQLHelper {
+class SparkSessionExtensionSuite extends SparkFunSuite {
   private def create(
       builder: SparkSessionExtensionsProvider): Seq[SparkSessionExtensionsProvider] = Seq(builder)
 
@@ -406,26 +407,6 @@ class SparkSessionExtensionSuite extends SparkFunSuite with SQLHelper {
       session.sql("SELECT * FROM v")
     }
   }
-
-  test("SPARK-38697: Extend SparkSessionExtensions to inject rules into AQE Optimizer") {
-    def executedPlan(df: Dataset[java.lang.Long]): SparkPlan = {
-      assert(df.queryExecution.executedPlan.isInstanceOf[AdaptiveSparkPlanExec])
-      df.queryExecution.executedPlan.asInstanceOf[AdaptiveSparkPlanExec].executedPlan
-    }
-    val extensions = create { extensions =>
-      extensions.injectRuntimeOptimizerRule(_ => AddLimit)
-    }
-    withSession(extensions) { session =>
-      assert(session.sessionState.adaptiveRulesHolder.runtimeOptimizerRules.contains(AddLimit))
-
-      withSQLConf(SQLConf.ADAPTIVE_EXECUTION_ENABLED.key -> "true") {
-        val df = session.range(2).repartition()
-        assert(!executedPlan(df).isInstanceOf[CollectLimitExec])
-        df.collect()
-        assert(executedPlan(df).isInstanceOf[CollectLimitExec])
-      }
-    }
-  }
 }
 
 case class MyRule(spark: SparkSession) extends Rule[LogicalPlan] {
@@ -600,7 +581,7 @@ trait ColumnarExpression extends Expression with Serializable {
     if (!super.equals(other)) {
       return false
     }
-    other.isInstanceOf[ColumnarExpression]
+    return other.isInstanceOf[ColumnarExpression]
   }
 
   override def hashCode(): Int = super.hashCode()
@@ -716,7 +697,7 @@ class ColumnarProjectExec(projectList: Seq[NamedExpression], child: SparkPlan)
     if (!super.equals(other)) {
       return false
     }
-    other.isInstanceOf[ColumnarProjectExec]
+    return other.isInstanceOf[ColumnarProjectExec]
   }
 
   override def hashCode(): Int = super.hashCode()
@@ -899,7 +880,7 @@ class ReplacedRowToColumnarExec(override val child: SparkPlan)
     if (!super.equals(other)) {
       return false
     }
-    other.isInstanceOf[ReplacedRowToColumnarExec]
+    return other.isInstanceOf[ReplacedRowToColumnarExec]
   }
 
   override def hashCode(): Int = super.hashCode()
@@ -1042,12 +1023,5 @@ class YourExtensions extends SparkSessionExtensionsProvider {
 
   override def apply(v1: SparkSessionExtensions): Unit = {
     v1.injectFunction(getAppName)
-  }
-}
-
-object AddLimit extends Rule[LogicalPlan] {
-  override def apply(plan: LogicalPlan): LogicalPlan = plan match {
-    case Limit(_, _) => plan
-    case _ => Limit(Literal(1), plan)
   }
 }
