@@ -36,12 +36,9 @@ import org.apache.spark.sql.internal.SQLConf
 object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
 
   def apply(plan: LogicalPlan): LogicalPlan = {
-    // scalastyle:off println
     if (!conf.cboEnabled || !conf.joinReorderEnabled) {
-      println("Skipping CostBasedJoinReorder due to configuration disabling it")
       plan
     } else {
-      println("CostBasedJoinReorder transforming plan")
       val result = plan.transformDownWithPruning(_.containsPattern(INNER_LIKE_JOIN), ruleId) {
         // Start reordering with a joinable item, which is an InnerLike join with conditions.
         // Avoid reordering if a join hint is present.
@@ -56,7 +53,6 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
         case OrderedJoin(left, right, jt, cond) => Join(left, right, jt, cond, JoinHint.NONE)
       }
     }
-    // scalastyle:on println
   }
 
   private def reorder(plan: LogicalPlan, output: Seq[Attribute]): LogicalPlan = {
@@ -66,18 +62,8 @@ object CostBasedJoinReorder extends Rule[LogicalPlan] with PredicateHelper {
       // We also need to check if costs of all items can be evaluated.
       if (items.size > 2 && items.size <= conf.joinReorderDPThreshold && conditions.nonEmpty &&
           items.forall(_.stats.rowCount.isDefined)) {
-        // scalastyle:off println
-        println(s"CostBasedJoinReorder.reorder() rowCounts=${items.map(x => {
-          s"${x.simpleStringWithNodeId()}: ${x.stats.rowCount}"
-        })}")
-        // scalastyle:on println
         JoinReorderDP.search(conf, items, conditions, output)
       } else {
-        // scalastyle:off println
-        println(s"CostBasedJoinReorder.reorder() could not run, " +
-          s"probably because row counts are not available, or there are fewer " +
-          s"than 2 inner joins")
-        // scalastyle:on println
         plan
       }
     // Set consecutive join nodes ordered.
