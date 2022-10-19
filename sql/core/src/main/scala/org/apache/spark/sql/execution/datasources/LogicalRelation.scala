@@ -23,7 +23,6 @@ import org.apache.spark.sql.catalyst.plans.QueryPlan
 import org.apache.spark.sql.catalyst.plans.logical.{ExposesMetadataColumns, LeafNode, LogicalPlan, Statistics}
 import org.apache.spark.sql.catalyst.util.{truncatedString, CharVarcharUtils}
 import org.apache.spark.sql.sources.BaseRelation
-import org.apache.spark.sql.types.DataTypes
 
 /**
  * Used to link a [[BaseRelation]] in to a logical query plan.
@@ -41,61 +40,9 @@ case class LogicalRelation(
     catalogTable = None)
 
   override def computeStats(): Statistics = {
-    val originalStats = catalogTable
+    catalogTable
       .flatMap(_.stats.map(_.toPlanStats(output, conf.cboEnabled || conf.planStatsEnabled)))
       .getOrElse(Statistics(sizeInBytes = relation.sizeInBytes))
-
-    // AQE POC change:
-    // this is a separate experiment that is not essential for enabling join-reordering in AQE
-    // but enabling this means that we get to apply join-reordering before any query stages
-    // start executing. There is currently no way for us to do this without changes in Spark
-    // though
-
-    val enableLogicalRelationStats = true
-//    sys.env.getOrElse(
-//      "SPARK_ENABLE_LOGICAL_RELATION_STATS", "false").toBoolean
-
-    // scalastyle:off println
-    println(s"enableLogicalRelationStats = $enableLogicalRelationStats")
-    // scalastyle:on println
-
-    val statsWithRowcount = if (enableLogicalRelationStats) {
-      // AQE POC change:
-      // JoinReordering requires row count statistics so we estimate the row count
-      // based on schema and data size
-      if (originalStats.rowCount.isEmpty) {
-        var size = 0
-        for (field <- relation.schema.fields) {
-          // estimate the size of one row based on schema
-          val fieldSize = field.dataType match {
-            case DataTypes.ByteType | DataTypes.BooleanType => 1
-            case DataTypes.ShortType => 2
-            case DataTypes.IntegerType | DataTypes.FloatType => 4
-            case DataTypes.LongType | DataTypes.DoubleType => 8
-            case DataTypes.StringType => 50
-            case DataTypes.DateType | DataTypes.TimestampType => 8
-            case _ => 20
-          }
-          size += fieldSize
-        }
-        val estimatedRowcount = Some(originalStats.sizeInBytes / size)
-        new Statistics(originalStats.sizeInBytes, estimatedRowcount)
-      } else {
-        originalStats
-      }
-    } else {
-      originalStats
-    }
-    val location = relation.asInstanceOf[HadoopFsRelation].location
-    val f = location.asInstanceOf[InMemoryFileIndex].rootPaths(0).toString()
-
-    // AQE POC change: debug logging
-    // scalastyle:off println
-    println(s"[LogicalRelation] [${relation.getClass.getName}] " +
-      s"computeStats() [$f] returning $statsWithRowcount")
-    // scalastyle:on println
-
-    statsWithRowcount
   }
 
   /** Used to lookup original attribute capitalization */
