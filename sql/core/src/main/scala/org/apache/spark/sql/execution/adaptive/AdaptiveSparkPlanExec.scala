@@ -231,6 +231,11 @@ case class AdaptiveSparkPlanExec(
       // Use inputPlan logicalLink here in case some top level physical nodes may be removed
       // during `initialPlan`
       var currentLogicalPlan = inputPlan.logicalLink.get
+
+      // AQE POC CHANGE: optimize plan before executing any query stages
+      currentLogicalPlan.invalidateStatsCache()
+      currentLogicalPlan = optimizer.execute(currentLogicalPlan)
+
       var result = createQueryStages(currentPhysicalPlan)
       val events = new LinkedBlockingQueue[StageMaterializationEvent]()
       val errors = new mutable.ArrayBuffer[Throwable]()
