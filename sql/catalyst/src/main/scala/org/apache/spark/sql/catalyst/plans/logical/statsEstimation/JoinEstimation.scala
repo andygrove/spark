@@ -148,13 +148,7 @@ case class JoinEstimation(join: Join) extends Logging {
       val inputAttrStats = AttributeMap(
         leftStats.attributeStats.toSeq ++ rightStats.attributeStats.toSeq)
       // Propagate the original column stats
-
-      // AQE POC change:
-      // we really want to discourage cartesian joins / nested loop joins so lets
-      // square the result here until we figure out a better solution
-      val cartesianProduct = leftStats.rowCount.get * rightStats.rowCount.get
-      val outputRows = cartesianProduct * cartesianProduct
-
+      val outputRows = leftStats.rowCount.get * rightStats.rowCount.get
       Some(Statistics(
         sizeInBytes = getOutputSize(join.output, outputRows, inputAttrStats),
         rowCount = Some(outputRows),
