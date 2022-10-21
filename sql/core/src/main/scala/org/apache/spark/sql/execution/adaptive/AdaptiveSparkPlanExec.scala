@@ -221,6 +221,11 @@ case class AdaptiveSparkPlanExec(
   }
 
   private def getFinalPhysicalPlan(): SparkPlan = lock.synchronized {
+
+    // scalastyle:off println
+    println("AdaptiveSparkPlanExec.getFinalPhysicalPlan()")
+    // scalastyle:on println
+
     if (isFinalPlan) return currentPhysicalPlan
 
     // In case of this adaptive plan being executed out of `withActive` scoped functions, e.g.,
