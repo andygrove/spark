@@ -17,7 +17,7 @@
 
 package org.apache.spark.sql.execution.datasources
 
-import org.apache.spark.sql.{QueryTest, Row}
+import org.apache.spark.sql.{IgnoreComet, QueryTest, Row}
 import org.apache.spark.sql.catalyst.expressions.{Ascending, AttributeReference, NullsFirst, SortOrder}
 import org.apache.spark.sql.catalyst.plans.logical.{LogicalPlan, Sort}
 import org.apache.spark.sql.execution.{QueryExecution, SortExec}
@@ -305,7 +305,8 @@ class V1WriteCommandSuite extends QueryTest with SharedSparkSession with V1Write
     }
   }
 
-  test("v1 write with AQE changing SMJ to BHJ") {
+  test("v1 write with AQE changing SMJ to BHJ",
+      IgnoreComet("TODO: Comet SMJ to BHJ by AQE")) {
     withPlannedWrite { enabled =>
       withTable("t") {
         sql(

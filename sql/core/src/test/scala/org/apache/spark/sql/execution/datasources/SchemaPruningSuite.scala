@@ -868,6 +868,7 @@ abstract class SchemaPruningSuite
     val fileSourceScanSchemata =
       collect(df.queryExecution.executedPlan) {
         case scan: FileSourceScanExec => scan.requiredSchema
+        case scan: CometScanExec => scan.requiredSchema
       }
     assert(fileSourceScanSchemata.size === expectedSchemaCatalogStrings.size,
       s"Found ${fileSourceScanSchemata.size} file sources in dataframe, " +

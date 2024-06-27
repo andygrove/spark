@@ -955,6 +955,7 @@ class FileBasedDataSourceSuite extends QueryTest
             assert(bJoinExec.isEmpty)
             val smJoinExec = collect(joinedDF.queryExecution.executedPlan) {
               case smJoin: SortMergeJoinExec => smJoin
+              case smJoin: CometSortMergeJoinExec => smJoin
             }
             assert(smJoinExec.nonEmpty)
           }
@@ -1240,6 +1241,8 @@ class FileBasedDataSourceSuite extends QueryTest
           val filters = df.queryExecution.executedPlan.collect {
             case f: FileSourceScanLike => f.dataFilters
             case b: BatchScanExec => b.scan.asInstanceOf[FileScan].dataFilters
+            case b: CometScanExec => b.dataFilters
+            case b: CometBatchScanExec => b.scan.asInstanceOf[FileScan].dataFilters
           }.flatten
           assert(filters.contains(GreaterThan(scan.logicalPlan.output.head, Literal(5L))))
         }

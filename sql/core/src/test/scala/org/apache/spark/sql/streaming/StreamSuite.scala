@@ -1114,11 +1114,12 @@ class StreamSuite extends StreamTest {
       val localLimits = execPlan.collect {
         case l: LocalLimitExec => l
         case l: StreamingLocalLimitExec => l
+        case l: CometLocalLimitExec => l
       }
 
       require(
         localLimits.size == 1,
-        s"Cant verify local limit optimization with this plan:\n$execPlan")
+        s"Cant verify local limit optimization ${localLimits.size} with this plan:\n$execPlan")
 
       if (expectStreamingLimit) {
         assert(
@@ -1126,7 +1127,8 @@ class StreamSuite extends StreamTest {
           s"Local limit was not StreamingLocalLimitExec:\n$execPlan")
       } else {
         assert(
-          localLimits.head.isInstanceOf[LocalLimitExec],
+          localLimits.head.isInstanceOf[LocalLimitExec] ||
+            localLimits.head.isInstanceOf[CometLocalLimitExec],
           s"Local limit was not LocalLimitExec:\n$execPlan")
       }
     }

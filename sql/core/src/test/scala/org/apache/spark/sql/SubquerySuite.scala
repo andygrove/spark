@@ -1599,6 +1599,12 @@ class SubquerySuite extends QueryTest
             fs.inputRDDs().forall(
               _.asInstanceOf[FileScanRDD].filePartitions.forall(
                 _.files.forall(_.urlEncodedPath.contains("p=0"))))
+        case WholeStageCodegenExec(ColumnarToRowExec(InputAdapter(
+        fs @ CometScanExec(_, _, _, partitionFilters, _, _, _, _, _, _)))) =>
+          partitionFilters.exists(ExecSubqueryExpression.hasSubquery) &&
+            fs.inputRDDs().forall(
+              _.asInstanceOf[FileScanRDD].filePartitions.forall(
+                _.files.forall(_.urlEncodedPath.contains("p=0"))))
         case _ => false
       })
     }
@@ -2164,7 +2170,7 @@ class SubquerySuite extends QueryTest
 
       df.collect()
       val exchanges = collect(df.queryExecution.executedPlan) {
-        case s: ShuffleExchangeExec => s
+        case s: ShuffleExchangeLike => s
       }
       assert(exchanges.size === 1)
     }

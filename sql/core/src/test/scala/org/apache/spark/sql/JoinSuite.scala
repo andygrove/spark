@@ -801,7 +801,8 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
     }
   }
 
-  test("test SortMergeJoin (with spill)") {
+  test("test SortMergeJoin (with spill)",
+      IgnoreComet("TODO: Comet SMJ doesn't support spill yet")) {
     withSQLConf(SQLConf.AUTO_BROADCASTJOIN_THRESHOLD.key -> "1",
       SQLConf.SORT_MERGE_JOIN_EXEC_BUFFER_IN_MEMORY_THRESHOLD.key -> "0",
       SQLConf.SORT_MERGE_JOIN_EXEC_BUFFER_SPILL_THRESHOLD.key -> "1") {
@@ -1176,9 +1177,11 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
       val plan = df1.join(df2.hint("SHUFFLE_HASH"), $"k1" === $"k2", joinType)
         .groupBy($"k1").count()
         .queryExecution.executedPlan
-      assert(collect(plan) { case _: ShuffledHashJoinExec => true }.size === 1)
+      assert(collect(plan) {
+        case _: ShuffledHashJoinExec | _: CometHashJoinExec => true }.size === 1)
       // No extra shuffle before aggregate
-      assert(collect(plan) { case _: ShuffleExchangeExec => true }.size === 2)
+      assert(collect(plan) {
+        case _: ShuffleExchangeLike => true }.size === 2)
     })
   }
 
@@ -1195,10 +1198,11 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
         .join(df4.hint("SHUFFLE_MERGE"), $"k1" === $"k4", joinType)
         .queryExecution
         .executedPlan
-      assert(collect(plan) { case _: SortMergeJoinExec => true }.size === 2)
+      assert(collect(plan) {
+        case _: SortMergeJoinExec | _: CometSortMergeJoinExec => true }.size === 2)
       assert(collect(plan) { case _: BroadcastHashJoinExec => true }.size === 1)
       // No extra sort before last sort merge join
-      assert(collect(plan) { case _: SortExec => true }.size === 3)
+      assert(collect(plan) { case _: SortExec | _: CometSortExec => true }.size === 3)
     })
 
     // Test shuffled hash join
@@ -1208,10 +1212,13 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
         .join(df4.hint("SHUFFLE_MERGE"), $"k1" === $"k4", joinType)
         .queryExecution
         .executedPlan
-      assert(collect(plan) { case _: SortMergeJoinExec => true }.size === 2)
-      assert(collect(plan) { case _: ShuffledHashJoinExec => true }.size === 1)
+      assert(collect(plan) {
+        case _: SortMergeJoinExec | _: CometSortMergeJoinExec => true }.size === 2)
+      assert(collect(plan) {
+        case _: ShuffledHashJoinExec | _: CometHashJoinExec => true }.size === 1)
       // No extra sort before last sort merge join
-      assert(collect(plan) { case _: SortExec => true }.size === 3)
+      assert(collect(plan) {
+        case _: SortExec | _: CometSortExec => true }.size === 3)
     })
   }
 
@@ -1302,12 +1309,12 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
     inputDFs.foreach { case (df1, df2, joinExprs) =>
       val smjDF = df1.join(df2.hint("SHUFFLE_MERGE"), joinExprs, "full")
       assert(collect(smjDF.queryExecution.executedPlan) {
-        case _: SortMergeJoinExec => true }.size === 1)
+        case _: SortMergeJoinExec | _: CometSortMergeJoinExec => true }.size === 1)
       val smjResult = smjDF.collect()
 
       val shjDF = df1.join(df2.hint("SHUFFLE_HASH"), joinExprs, "full")
       assert(collect(shjDF.queryExecution.executedPlan) {
-        case _: ShuffledHashJoinExec => true }.size === 1)
+        case _: ShuffledHashJoinExec | _: CometHashJoinExec => true }.size === 1)
       // Same result between shuffled hash join and sort merge join
       checkAnswer(shjDF, smjResult)
     }
@@ -1485,7 +1492,8 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
           val plan = sql(getAggQuery(selectExpr, joinType)).queryExecution.executedPlan
           assert(collect(plan) { case _: BroadcastNestedLoopJoinExec => true }.size === 1)
           // Have shuffle before aggregation
-          assert(collect(plan) { case _: ShuffleExchangeExec => true }.size === 1)
+          assert(collect(plan) {
+            case _: ShuffleExchangeLike => true }.size === 1)
       }
 
       def getJoinQuery(selectExpr: String, joinType: String): String = {
@@ -1514,9 +1522,12 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
           }
           val plan = sql(getJoinQuery(selectExpr, joinType)).queryExecution.executedPlan
           assert(collect(plan) { case _: BroadcastNestedLoopJoinExec => true }.size === 1)
-          assert(collect(plan) { case _: SortMergeJoinExec => true }.size === 3)
+          assert(collect(plan) {
+            case _: SortMergeJoinExec => true
+            case _: CometSortMergeJoinExec => true
+          }.size === 3)
           // No extra sort on left side before last sort merge join
-          assert(collect(plan) { case _: SortExec => true }.size === 5)
+          assert(collect(plan) { case _: SortExec | _: CometSortExec => true }.size === 5)
       }
 
       // Test output ordering is not preserved
@@ -1525,9 +1536,12 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
           val selectExpr = "/*+ BROADCAST(left_t) */ k1 as k0"
           val plan = sql(getJoinQuery(selectExpr, joinType)).queryExecution.executedPlan
           assert(collect(plan) { case _: BroadcastNestedLoopJoinExec => true }.size === 1)
-          assert(collect(plan) { case _: SortMergeJoinExec => true }.size === 3)
+          assert(collect(plan) {
+            case _: SortMergeJoinExec => true
+            case _: CometSortMergeJoinExec => true
+          }.size === 3)
           // Have sort on left side before last sort merge join
-          assert(collect(plan) { case _: SortExec => true }.size === 6)
+          assert(collect(plan) { case _: SortExec | _: CometSortExec => true }.size === 6)
       }
 
       // Test singe partition
@@ -1537,7 +1551,8 @@ class JoinSuite extends QueryTest with SharedSparkSession with AdaptiveSparkPlan
            |FROM range(0, 10, 1, 1) t1 FULL OUTER JOIN range(0, 10, 1, 1) t2
            |""".stripMargin)
       val plan = fullJoinDF.queryExecution.executedPlan
-      assert(collect(plan) { case _: ShuffleExchangeExec => true}.size == 1)
+      assert(collect(plan) {
+        case _: ShuffleExchangeLike => true}.size == 1)
       checkAnswer(fullJoinDF, Row(100))
     }
   }

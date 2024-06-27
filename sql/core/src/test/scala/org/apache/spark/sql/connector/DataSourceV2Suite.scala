@@ -24,6 +24,7 @@ import test.org.apache.spark.sql.connector._
 
 import org.apache.spark.sql.{AnalysisException, DataFrame, QueryTest, Row}
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.comet.CometSortExec
 import org.apache.spark.sql.connector.catalog.{PartitionInternalRow, SupportsRead, Table, TableCapability, TableProvider}
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.{Expression, FieldReference, Literal, NamedReference, NullOrdering, SortDirection, SortOrder, Transform}
@@ -34,7 +35,7 @@ import org.apache.spark.sql.connector.read.partitioning.{KeyGroupedPartitioning,
 import org.apache.spark.sql.execution.SortExec
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanHelper
 import org.apache.spark.sql.execution.datasources.v2.{BatchScanExec, DataSourceV2Relation, DataSourceV2ScanRelation}
-import org.apache.spark.sql.execution.exchange.{Exchange, ShuffleExchangeExec}
+import org.apache.spark.sql.execution.exchange.{Exchange, ShuffleExchangeExec, ShuffleExchangeLike}
 import org.apache.spark.sql.execution.vectorized.OnHeapColumnVector
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -269,13 +270,13 @@ class DataSourceV2Suite extends QueryTest with SharedSparkSession with AdaptiveS
           val groupByColJ = df.groupBy($"j").agg(sum($"i"))
           checkAnswer(groupByColJ, Seq(Row(2, 8), Row(4, 2), Row(6, 5)))
           assert(collectFirst(groupByColJ.queryExecution.executedPlan) {
-            case e: ShuffleExchangeExec => e
+            case e: ShuffleExchangeLike => e
           }.isDefined)
 
           val groupByIPlusJ = df.groupBy($"i" + $"j").agg(count("*"))
           checkAnswer(groupByIPlusJ, Seq(Row(5, 2), Row(6, 2), Row(8, 1), Row(9, 1)))
           assert(collectFirst(groupByIPlusJ.queryExecution.executedPlan) {
-            case e: ShuffleExchangeExec => e
+            case e: ShuffleExchangeLike => e
           }.isDefined)
         }
       }
@@ -335,10 +336,11 @@ class DataSourceV2Suite extends QueryTest with SharedSparkSession with AdaptiveS
 
                 val (shuffleExpected, sortExpected) = groupByExpects
                 assert(collectFirst(groupBy.queryExecution.executedPlan) {
-                  case e: ShuffleExchangeExec => e
+                  case e: ShuffleExchangeLike => e
                 }.isDefined === shuffleExpected)
                 assert(collectFirst(groupBy.queryExecution.executedPlan) {
                   case e: SortExec => e
+                  case c: CometSortExec => c
                 }.isDefined === sortExpected)
               }
 
@@ -353,10 +355,11 @@ class DataSourceV2Suite extends QueryTest with SharedSparkSession with AdaptiveS
 
                 val (shuffleExpected, sortExpected) = windowFuncExpects
                 assert(collectFirst(windowPartByColIOrderByColJ.queryExecution.executedPlan) {
-                  case e: ShuffleExchangeExec => e
+                  case e: ShuffleExchangeLike => e
                 }.isDefined === shuffleExpected)
                 assert(collectFirst(windowPartByColIOrderByColJ.queryExecution.executedPlan) {
                   case e: SortExec => e
+                  case c: CometSortExec => c
                 }.isDefined === sortExpected)
               }
             }

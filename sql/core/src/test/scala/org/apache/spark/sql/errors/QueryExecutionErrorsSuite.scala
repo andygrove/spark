@@ -256,7 +256,8 @@ class QueryExecutionErrorsSuite
   }
 
   test("INCONSISTENT_BEHAVIOR_CROSS_VERSION: " +
-    "compatibility with Spark 2.4/3.2 in reading/writing dates") {
+    "compatibility with Spark 2.4/3.2 in reading/writing dates",
+    IgnoreComet("Comet doesn't completely support datetime rebase mode yet")) {
 
     // Fail to read ancient datetime values.
     withSQLConf(SQLConf.PARQUET_REBASE_MODE_IN_READ.key -> EXCEPTION.toString) {

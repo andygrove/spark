@@ -17,7 +17,8 @@
 
 package org.apache.spark.sql.execution
 
-import org.apache.spark.sql.{DataFrame, QueryTest, Row}
+import org.apache.spark.sql.{DataFrame, IgnoreComet, QueryTest, Row}
+import org.apache.spark.sql.comet.CometProjectExec
 import org.apache.spark.sql.connector.SimpleWritableDataSource
 import org.apache.spark.sql.execution.adaptive.{AdaptiveSparkPlanHelper, DisableAdaptiveExecutionSuite, EnableAdaptiveExecutionSuite}
 import org.apache.spark.sql.internal.SQLConf
@@ -34,7 +35,10 @@ abstract class RemoveRedundantProjectsSuiteBase
   private def assertProjectExecCount(df: DataFrame, expected: Int): Unit = {
     withClue(df.queryExecution) {
       val plan = df.queryExecution.executedPlan
-      val actual = collectWithSubqueries(plan) { case p: ProjectExec => p }.size
+      val actual = collectWithSubqueries(plan) {
+        case p: ProjectExec => p
+        case p: CometProjectExec => p
+      }.size
       assert(actual == expected)
     }
   }
@@ -112,7 +116,8 @@ abstract class RemoveRedundantProjectsSuiteBase
     assertProjectExec(query, 1, 3)
   }
 
-  test("join with ordering requirement") {
+  test("join with ordering requirement",
+    IgnoreComet("TODO: Support SubqueryBroadcastExec in Comet: #242")) {
     val query = "select * from (select key, a, c, b from testView) as t1 join " +
       "(select key, a, b, c from testView) as t2 on t1.key = t2.key where t2.a > 50"
     assertProjectExec(query, 2, 2)

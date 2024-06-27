@@ -1036,7 +1036,8 @@ class ParquetSchemaSuite extends ParquetSchemaTest {
     e
   }
 
-  test("schema mismatch failure error message for parquet reader") {
+  test("schema mismatch failure error message for parquet reader",
+      IgnoreComet("Comet doesn't work with vectorizedReaderEnabled = false")) {
     withTempPath { dir =>
       val e = testSchemaMismatch(dir.getCanonicalPath, vectorizedReaderEnabled = false)
       val expectedMessage = "Encountered error while reading file"

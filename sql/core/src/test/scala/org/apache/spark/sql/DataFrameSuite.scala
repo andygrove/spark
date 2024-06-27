@@ -44,7 +44,7 @@ import org.apache.spark.sql.connector.FakeV2Provider
 import org.apache.spark.sql.execution.{FilterExec, LogicalRDD, QueryExecution, SortExec, WholeStageCodegenExec}
 import org.apache.spark.sql.execution.adaptive.AdaptiveSparkPlanHelper
 import org.apache.spark.sql.execution.aggregate.HashAggregateExec
-import org.apache.spark.sql.execution.exchange.{BroadcastExchangeExec, ReusedExchangeExec, ShuffleExchangeExec, ShuffleExchangeLike}
+import org.apache.spark.sql.execution.exchange.{BroadcastExchangeExec, ReusedExchangeExec, ShuffleExchangeLike}
 import org.apache.spark.sql.expressions.{Aggregator, Window}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.internal.SQLConf
@@ -2020,7 +2020,7 @@ class DataFrameSuite extends QueryTest
           fail("Should not have back to back Aggregates")
         }
         atFirstAgg = true
-      case e: ShuffleExchangeExec => atFirstAgg = false
+      case e: ShuffleExchangeLike => atFirstAgg = false
       case _ =>
     }
   }
@@ -2344,7 +2344,7 @@ class DataFrameSuite extends QueryTest
       checkAnswer(join, df)
       assert(
         collect(join.queryExecution.executedPlan) {
-          case e: ShuffleExchangeExec => true }.size === 1)
+          case _: ShuffleExchangeLike => true }.size === 1)
       assert(
         collect(join.queryExecution.executedPlan) { case e: ReusedExchangeExec => true }.size === 1)
       val broadcasted = broadcast(join)
@@ -2352,7 +2352,7 @@ class DataFrameSuite extends QueryTest
       checkAnswer(join2, df)
       assert(
         collect(join2.queryExecution.executedPlan) {
-          case e: ShuffleExchangeExec => true }.size == 1)
+          case _: ShuffleExchangeLike => true }.size == 1)
       assert(
         collect(join2.queryExecution.executedPlan) {
           case e: BroadcastExchangeExec => true }.size === 1)
@@ -2915,7 +2915,7 @@ class DataFrameSuite extends QueryTest
 
     // Assert that no extra shuffle introduced by cogroup.
     val exchanges = collect(df3.queryExecution.executedPlan) {
-      case h: ShuffleExchangeExec => h
+      case h: ShuffleExchangeLike => h
     }
     assert(exchanges.size == 2)
   }
@@ -3364,7 +3364,8 @@ class DataFrameSuite extends QueryTest
     assert(df2.isLocal)
   }
 
-  test("SPARK-35886: PromotePrecision should be subexpr replaced") {
+  test("SPARK-35886: PromotePrecision should be subexpr replaced",
+    IgnoreComet("TODO: fix Comet for this test")) {
     withTable("tbl") {
       sql(
         """

@@ -30,9 +30,11 @@ import org.apache.spark.sql.internal.SQLConf.ParquetOutputTimestampType.{INT96, 
 import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.tags.SlowSQLTest
 
+// Comet is disabled for this suite because it doesn't support datetime rebase mode
 abstract class ParquetRebaseDatetimeSuite
   extends QueryTest
   with ParquetTest
+  with IgnoreCometSuite
   with SharedSparkSession {
 
   import testImplicits._

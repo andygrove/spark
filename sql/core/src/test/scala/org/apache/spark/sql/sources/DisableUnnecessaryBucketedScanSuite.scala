@@ -68,7 +68,10 @@ abstract class DisableUnnecessaryBucketedScanSuite
 
     def checkNumBucketedScan(query: String, expectedNumBucketedScan: Int): Unit = {
       val plan = sql(query).queryExecution.executedPlan
-      val bucketedScan = collect(plan) { case s: FileSourceScanExec if s.bucketedScan => s }
+      val bucketedScan = collect(plan) {
+        case s: FileSourceScanExec if s.bucketedScan => s
+        case s: CometScanExec if s.bucketedScan => s
+      }
       assert(bucketedScan.length == expectedNumBucketedScan)
     }
 

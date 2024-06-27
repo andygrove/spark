@@ -1353,6 +1353,14 @@ object SparkSession extends Logging {
     }
   }
 
+  private def loadCometExtension(sparkContext: SparkContext): Seq[String] = {
+    if (sparkContext.getConf.getBoolean("spark.comet.enabled", false)) {
+        Seq("org.apache.comet.CometSparkSessionExtensions")
+      } else {
+        Seq.empty
+      }
+  }
+
   /**
    * Initialize extensions specified in [[StaticSQLConf]]. The classes will be applied to the
    * extensions passed into this function.
@@ -1362,6 +1370,7 @@ object SparkSession extends Logging {
       extensions: SparkSessionExtensions): SparkSessionExtensions = {
     val extensionConfClassNames = sparkContext.getConf.get(StaticSQLConf.SPARK_SESSION_EXTENSIONS)
       .getOrElse(Seq.empty)
+    val extensionClassNames = extensionConfClassNames ++ loadCometExtension(sparkContext)
     extensionConfClassNames.foreach { extensionConfClassName =>
       try {
         val extensionConfClass = Utils.classForName(extensionConfClassName)
